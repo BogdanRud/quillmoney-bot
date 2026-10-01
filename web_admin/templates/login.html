@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Вход - Quill Studio Admin</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .login-container {
+            background: var(--bg-secondary);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            max-width: 400px;
+            width: 100%;
+            border: 1px solid var(--border-color);
+        }
+
+        h1 {
+            text-align: center;
+            color: var(--text-primary);
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: var(--text-secondary);
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .info {
+            background: rgba(102, 126, 234, 0.1);
+            color: var(--accent-primary);
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-size: 13px;
+            line-height: 1.5;
+            border: 1px solid rgba(102, 126, 234, 0.3);
+        }
+
+        .info a {
+            color: var(--accent-primary);
+        }
+
+        /* Экран ожидания */
+        #waitingScreen {
+            display: none;
+            text-align: center;
+        }
+
+        .spinner {
+            width: 56px;
+            height: 56px;
+            border: 4px solid rgba(102, 126, 234, 0.2);
+            border-top-color: var(--accent-primary);
+            border-radius: 50%;
+            animation: spin 0.9s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .waiting-title {
+            color: var(--text-primary);
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .waiting-desc {
+            color: var(--text-secondary);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .cancel-btn {
+            margin-top: 24px;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 10px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .cancel-btn:hover {
+            border-color: var(--accent-primary);
+            color: var(--accent-primary);
+        }
+
+        .timeout-bar-wrap {
+            margin-top: 20px;
+            background: rgba(255,255,255,0.07);
+            border-radius: 4px;
+            height: 4px;
+            overflow: hidden;
+        }
+
+        .timeout-bar {
+            height: 100%;
+            background: var(--accent-primary);
+            width: 100%;
+            transition: width 1s linear;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <h1>🔐 Вход в панель</h1>
+        <p class="subtitle">Quill Studio Admin Panel</p>
+
+        <!-- Форма ввода ID -->
+        <div id="loginScreen">
+            <div class="error" id="error"></div>
+
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="telegram_id">Ваш Telegram ID</label>
+                    <input
+                        type="number"
+                        id="telegram_id"
+                        name="telegram_id"
+                        placeholder="1123967153"
+                        required
+                    >
+                </div>
+
+                <button type="submit" id="submitBtn">Войти</button>
+            </form>
+
+            <div class="info">
+                <strong>Как узнать свой Telegram ID?</strong><br>
+                Откройте бота <a href="https://t.me/userinfobot" target="_blank">@userinfobot</a>
+                в Telegram и скопируйте ваш ID
+            </div>
+        </div>
+
+        <!-- Экран ожидания подтверждения -->
+        <div id="waitingScreen">
+            <div class="spinner"></div>
+            <div class="waiting-title">Ожидание подтверждения</div>
+            <div class="waiting-desc">
+                Вам отправлено уведомление в Telegram.<br>
+                Нажмите кнопку <strong>«✅ Войти»</strong> в боте, чтобы разрешить доступ.
+            </div>
+            <div class="timeout-bar-wrap">
+                <div class="timeout-bar" id="timeoutBar"></div>
+            </div>
+            <button class="cancel-btn" id="cancelBtn">Отмена</button>
+        </div>
+    </div>
+
+    <script>
+        let pollInterval = null;
+        let pollToken = null;
+        let timeoutTimer = null;
+        const TTL_MS = 5 * 60 * 1000; // 5 минут
+
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const telegramId = document.getElementById('telegram_id').value;
+            const errorDiv = document.getElementById('error');
+            const submitBtn = document.getElementById('submitBtn');
+
+            errorDiv.classList.remove('show');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Отправка...';
+
+            try {
+                const formData = new FormData();
+                formData.append('telegram_id', telegramId);
+
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'include'
+                });
+
+                let data = null;
+                try {
+                    data = await response.json();
+                } catch {
+                    throw new Error('Сервер вернул неверный формат ответа');
+                }
+
+                if (response.ok && data.pending) {
+                    pollToken = data.token;
+                    showWaiting();
+                    startPolling();
+                } else {
+                    errorDiv.textContent = data.detail || data.message || 'Ошибка входа';
+                    errorDiv.classList.add('show');
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Войти';
+                }
+            } catch (error) {
+                errorDiv.textContent = 'Ошибка подключения: ' + (error.message || 'Неизвестная ошибка');
+                errorDiv.classList.add('show');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Войти';
+            }
+        });
+
+        document.getElementById('cancelBtn').addEventListener('click', cancelLogin);
+
+        function showWaiting() {
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('waitingScreen').style.display = 'block';
+
+            // Анимация прогресс-бара
+            const bar = document.getElementById('timeoutBar');
+            bar.style.width = '100%';
+            // Запустить уменьшение через 50ms чтобы CSS transition сработал
+            setTimeout(() => {
+                bar.style.transitionDuration = TTL_MS + 'ms';
+                bar.style.width = '0%';
+            }, 50);
+
+            timeoutTimer = setTimeout(() => {
+                stopPolling();
+                showError('Время ожидания истекло. Попробуйте снова.');
+                showLogin();
+            }, TTL_MS);
+        }
+
+        function showLogin() {
+            document.getElementById('waitingScreen').style.display = 'none';
+            document.getElementById('loginScreen').style.display = 'block';
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Войти';
+        }
+
+        function showError(msg) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = msg;
+            errorDiv.classList.add('show');
+        }
+
+        function startPolling() {
+            pollInterval = setInterval(async () => {
+                if (!pollToken) return;
+                try {
+                    const resp = await fetch(`/api/login/poll/${pollToken}`, { credentials: 'include' });
+                    const data = await resp.json();
+
+                    if (data.status === 'approved') {
+                        stopPolling();
+                        window.location.href = '/admin';
+                    } else if (data.status === 'rejected') {
+                        stopPolling();
+                        showError('Вход отклонён администратором.');
+                        showLogin();
+                    } else if (data.status === 'expired') {
+                        stopPolling();
+                        showError('Время ожидания истекло. Попробуйте снова.');
+                        showLogin();
+                    }
+                } catch {
+                    // Игнорируем сетевые ошибки при поллинге
+                }
+            }, 2000);
+        }
+
+        function stopPolling() {
+            if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+            if (timeoutTimer) { clearTimeout(timeoutTimer); timeoutTimer = null; }
+            pollToken = null;
+        }
+
+        function cancelLogin() {
+            stopPolling();
+            showLogin();
+        }
+    </script>
+</body>
+</html>

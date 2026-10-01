@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block page_title %}Главная панель{% endblock %}
+
+{% block content %}
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>Всего пользователей</h3>
+        <p id="totalUsers">-</p>
+    </div>
+    
+    <div class="stat-card">
+        <h3>Активных заданий</h3>
+        <p id="activeTasks">-</p>
+    </div>
+    
+    <div class="stat-card">
+        <h3>Заявок на вывод</h3>
+        <p id="pendingWithdrawals">-</p>
+    </div>
+    
+    <div class="stat-card">
+        <h3>Общий баланс</h3>
+        <p id="totalBalance">-</p>
+    </div>
+</div>
+
+<div style="background: var(--bg-tertiary); padding: 25px; border-radius: 16px; border: 1px solid var(--border-color);">
+    <h2 style="margin-bottom: 20px; color: var(--text-primary);">Быстрые действия</h2>
+    <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+        <a href="/admin/tasks" class="btn btn-primary">➕ Добавить задание</a>
+        <a href="/admin/users" class="btn btn-primary">👥 Пользователи</a>
+        <a href="/admin/withdrawals" class="btn btn-primary">💸 Выводы</a>
+        <a href="/admin/broadcast" class="btn btn-primary">📨 Рассылка</a>
+        <a href="/admin/tickets" class="btn btn-primary" id="quickTicketsBtn">🆘 Тикеты</a>
+        <a href="/admin/appeals" class="btn btn-primary" id="quickAppealsBtn">🚫 Апелляции</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    async function loadStats() {
+        try {
+            const [usersRes, tasksRes, withdrawalsRes, ticketsRes, appealsRes] = await Promise.all([
+                api.request('/api/users'),
+                api.request('/api/tasks'),
+                api.request('/api/withdrawals'),
+                api.request('/api/tickets').catch(() => ({ tickets: [] })),
+                api.request('/api/appeals').catch(() => ({ appeals: [] })),
+            ]);
+
+            document.getElementById('totalUsers').textContent = usersRes.users?.length || 0;
+            document.getElementById('activeTasks').textContent = tasksRes.tasks?.length || 0;
+            document.getElementById('pendingWithdrawals').textContent = withdrawalsRes.withdrawals?.length || 0;
+
+            const totalBalance = usersRes.users?.reduce((sum, u) => sum + (u.verified_balance || 0), 0) || 0;
+            document.getElementById('totalBalance').textContent = utils.formatCurrency(totalBalance);
+
+            // Счётчики на кнопках тикетов и апелляций
+            const openTickets = (ticketsRes.tickets || []).filter(t => t.status !== 'closed').length;
+            const openAppeals = (appealsRes.appeals || []).filter(a => a.status !== 'closed').length;
+            const tBtn = document.getElementById('quickTicketsBtn');
+            const aBtn = document.getElementById('quickAppealsBtn');
+            if (tBtn) tBtn.textContent = openTickets > 0 ? `🆘 Тикеты (${openTickets})` : '🆘 Тикеты';
+            if (aBtn) aBtn.textContent = openAppeals > 0 ? `🚫 Апелляции (${openAppeals})` : '🚫 Апелляции';
+        } catch (error) {
+            console.error('Ошибка загрузки статистики:', error);
+        }
+    }
+
+    loadStats();
+</script>
+{% endblock %}

@@ -1,0 +1,942 @@
+{% extends "base.html" %}
+
+{% block page_title %}CRM{% endblock %}
+
+{% block extra_css %}
+<style>
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+}
+.stat-card {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 14px 16px;
+}
+.stat-card .stat-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    margin-bottom: 4px;
+}
+.stat-card .stat-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+.tab-bar {
+    display: flex;
+    gap: 4px;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    padding: 4px;
+    margin-bottom: 16px;
+    border: 1px solid var(--border-color);
+    flex-wrap: wrap;
+}
+.tab-btn {
+    padding: 9px 16px;
+    border: none;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.tab-btn.active { background: var(--bg-tertiary); color: var(--text-primary); }
+.tab-count {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    background: rgba(255,255,255,.08);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    vertical-align: middle;
+}
+.tab-btn.active .tab-count { background: rgba(255,255,255,.16); color: var(--text-secondary); }
+.lead-card {
+    position: relative;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin-bottom: 14px;
+}
+.drag-handle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: grab;
+    margin-bottom: 12px;
+    user-select: none;
+}
+.drag-handle:active { cursor: grabbing; }
+.lead-card.drag-indicator-top::before,
+.lead-card.drag-indicator-bottom::after {
+    content: '';
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    height: 4px;
+    background: var(--accent-primary);
+    border-radius: 2px;
+    box-shadow: 0 0 10px 2px var(--accent-primary);
+    z-index: 5;
+}
+.lead-card.drag-indicator-top::before { top: -9px; }
+.lead-card.drag-indicator-bottom::after { bottom: -9px; }
+.lead-card-body {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 12px;
+}
+.lead-card-body > div { min-width: 0; }
+.lead-field-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    margin-bottom: 3px;
+}
+.lead-field-value {
+    color: var(--text-primary);
+    font-weight: 500;
+    font-size: 14px;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+.status-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+}
+.lead-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.lead-history { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color); font-size: 13px; color: var(--text-secondary); display: none; }
+.lead-history.open { display: block; }
+.lead-history-row { padding: 4px 0; }
+.upload-box {
+    background: var(--bg-tertiary);
+    border: 1px dashed var(--border-color);
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin-bottom: 20px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.empty-state { text-align: center; padding: 50px 20px; color: var(--text-secondary); }
+.empty-state .icon { font-size: 44px; margin-bottom: 14px; }
+.scroll-top-btn {
+    position: fixed;
+    right: 28px;
+    bottom: 28px;
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    border: 3px solid #fff;
+    background: linear-gradient(135deg, #7c5cff, #5b3df0);
+    color: #fff;
+    font-size: 30px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 6px 20px rgba(91,61,240,.6), 0 0 0 rgba(124,92,255,.6);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 999;
+    animation: scrollTopPulse 2s infinite;
+}
+.scroll-top-btn.visible { display: flex; }
+.scroll-top-btn:hover { transform: scale(1.08); }
+@keyframes scrollTopPulse {
+    0% { box-shadow: 0 6px 20px rgba(91,61,240,.6), 0 0 0 0 rgba(124,92,255,.55); }
+    70% { box-shadow: 0 6px 20px rgba(91,61,240,.6), 0 0 0 14px rgba(124,92,255,0); }
+    100% { box-shadow: 0 6px 20px rgba(91,61,240,.6), 0 0 0 0 rgba(124,92,255,0); }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<h2 style="color: var(--text-primary); margin-bottom: 20px; font-size: 28px;">🗂 CRM — каналы/группы</h2>
+
+<div class="stats-grid" id="statsGrid"></div>
+
+{% if is_admin_role %}
+<div class="upload-box">
+    <input type="file" id="csvFile" accept=".csv" class="form-control" style="max-width:300px;">
+    <button class="btn btn-primary" onclick="uploadCsv()">📥 Загрузить таблицу (CSV)</button>
+    <span style="font-size:12px;color:var(--text-secondary);">Колонки определяются автоматически (название/ссылка/подписчики/категория)</span>
+</div>
+{% endif %}
+
+<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+    <div class="tab-bar" id="tabBar" style="margin-bottom:0;"></div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div id="sortBar" style="display:flex;align-items:center;gap:6px;"></div>
+        {% if is_admin_role %}
+        <div id="bulkActionsBar"></div>
+        {% endif %}
+    </div>
+</div>
+
+<div id="leadsContainer">
+    <div class="empty-state"><div class="icon">⏳</div>Загрузка...</div>
+</div>
+
+<button id="scrollTopBtn" class="scroll-top-btn" onclick="scrollToTop()" title="Наверх">⬆️</button>
+
+<!-- Modal: закрыть лот -->
+<div id="closeLeadModal" class="modal-overlay">
+    <div class="modal-content" style="max-width:500px;">
+        <div class="modal-header"><h3>Закрыть лот</h3></div>
+        <div class="form-group">
+            <label>Статус</label>
+            <select id="closeStatusSelect" class="form-control">
+                <option value="agreed">✅ Согласился</option>
+                <option value="rejected">❌ Отказался</option>
+                <option value="no_response">🔇 Нет ответа</option>
+                <option value="follow_up">🟡 На связи / перезвонить позже</option>
+                <option value="invalid">🚫 Неверный/неактивный канал</option>
+                <option value="duplicate">🔁 Дубликат</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Заметка (необязательно)</label>
+            <textarea id="closeNoteInput" class="form-control" rows="3"></textarea>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:15px;">
+            <button class="btn btn-primary" style="flex:1;" onclick="submitCloseLead()">Сохранить</button>
+            <button class="btn" style="flex:1;background:var(--bg-tertiary);color:var(--text-primary);" onclick="modal.hide('closeLeadModal')">Отмена</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const IS_ADMIN = {{ is_admin_role | tojson }};
+    const CURRENT_USER_ID = {{ admin.user_id | tojson }};
+    let currentTab = IS_ADMIN ? 'new' : 'pool';
+    let currentLeadIdForClose = null;
+    let allLeads = [];
+    let currentSortField = 'created_at';
+    let currentSortDir = 'desc';
+    let lastStats = null;
+    let myStats = null;
+    let poolCount = null;
+
+    const FIXED_SORT_FIELDS = [
+        ['created_at', 'Дате загрузки'],
+        ['channel_name', 'Названию'],
+        ['channel_link', 'Ссылке'],
+        ['subscribers', 'Подписчикам'],
+        ['category', 'Категории'],
+        ['status', 'Статусу'],
+    ];
+
+    const STATUS_LABELS = {
+        new: '🆕 Новый', in_progress: '🔵 В работе', follow_up: '🟡 На связи',
+        agreed: '✅ Согласился', rejected: '❌ Отказался', no_response: '🔇 Нет ответа',
+        invalid: '🚫 Неверный/неактивный', duplicate: '🔁 Дубликат',
+    };
+    const STATUS_COLORS = {
+        new: '#6b7280', in_progress: '#3b82f6', follow_up: '#eab308',
+        agreed: '#22c55e', rejected: '#ef4444', no_response: '#6b7280',
+        invalid: '#7f1d1d', duplicate: '#a855f7',
+    };
+
+    function esc(s) {
+        return String(s || '').replace(/[&<>"']/g, c =>
+            ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function linkifyText(raw) {
+        let result = esc(raw);
+        result = result.replace(/(https?:\/\/[^\s<]+)/g, url =>
+            `<a href="${url}" target="_blank" rel="noopener" style="color:var(--accent-primary);">${url}</a>`
+        );
+        result = result.replace(/(^|[\s(])@(\w{4,32})\b/g, (m, pre, username) =>
+            `${pre}<a href="https://t.me/${username}" target="_blank" rel="noopener" style="color:var(--accent-primary);">@${username}</a>`
+        );
+        return result;
+    }
+
+    function getTabCount(key) {
+        if (key === 'pool') return poolCount;
+        if (key === 'mine' && IS_ADMIN) {
+            return myStats ? (myStats.in_progress || 0) + (myStats.follow_up || 0) : null;
+        }
+        if (key === 'mine' && !IS_ADMIN) {
+            if (!lastStats) return null;
+            return (lastStats.in_progress || 0) + (lastStats.follow_up || 0);
+        }
+        if (!lastStats) return null;
+        if (key === 'deleted') return lastStats.deleted;
+        return lastStats[key];
+    }
+
+    function renderTabs() {
+        const bar = document.getElementById('tabBar');
+        const tabs = IS_ADMIN
+            ? [['mine', '👤 Мои'], ['new', '🆕 Новые'], ['in_progress', '🔵 В работе'], ['follow_up', '🟡 На связи'],
+               ['agreed', '✅ Согласились'], ['rejected', '❌ Отказались'], ['no_response', '🔇 Нет ответа'],
+               ['invalid', '🚫 Невалидные'], ['duplicate', '🔁 Дубликаты'], ['deleted', '🗑 Удалённые'],
+               ['managers', '🗂 Список менеджеров']]
+            : [['pool', '🆕 Свободные'], ['mine', '👤 Мои'], ['agreed', '✅ Согласились'], ['rejected', '❌ Отказались'],
+               ['no_response', '🔇 Нет ответа'], ['invalid', '🚫 Невалидные'], ['duplicate', '🔁 Дубликаты']];
+        bar.innerHTML = tabs.map(([key, label]) => {
+            const count = getTabCount(key);
+            const badge = (count === null || count === undefined) ? '' : ` <span class="tab-count">${count}</span>`;
+            return `<button class="tab-btn ${currentTab === key ? 'active' : ''}" onclick="switchTab('${key}')">${label}${badge}</button>`;
+        }).join('');
+        renderBulkActionsBar();
+    }
+
+    function renderBulkActionsBar() {
+        const bar = document.getElementById('bulkActionsBar');
+        if (!bar) return;
+        if (currentTab === 'managers') {
+            bar.innerHTML = '';
+        } else if (currentTab === 'deleted') {
+            bar.innerHTML = `<button class="btn" style="background:var(--success);color:#000;" onclick="bulkRestoreAll()">♻️ Восстановить все</button>`;
+        } else {
+            bar.innerHTML = `<button class="btn" style="background:var(--error);color:#fff;" onclick="bulkDeleteCurrent()">🗑 Удалить все (эта вкладка)</button>`;
+        }
+    }
+
+    function switchTab(tab) {
+        currentTab = tab;
+        renderTabs();
+        if (tab === 'managers') {
+            loadManagersTab();
+        } else {
+            loadLeads();
+        }
+    }
+
+    async function loadManagersTab() {
+        const sortBar = document.getElementById('sortBar');
+        if (sortBar) sortBar.innerHTML = '';
+        const container = document.getElementById('leadsContainer');
+        container.innerHTML = '<div class="empty-state"><div class="icon">⏳</div>Загрузка...</div>';
+        try {
+            const data = await api.request('/api/crm/managers');
+            renderManagersList(data.managers || []);
+        } catch (err) {
+            container.innerHTML = `<div class="empty-state"><div class="icon">❌</div>Ошибка: ${esc(err.message)}</div>`;
+        }
+    }
+
+    function renderManagersList(managers) {
+        const container = document.getElementById('leadsContainer');
+        if (!managers.length) {
+            container.innerHTML = '<div class="empty-state"><div class="icon">🗂</div>Менеджеров пока нет.</div>';
+            return;
+        }
+        container.innerHTML = managers.map(m => `
+            <div class="lead-card">
+                <div class="lead-card-body">
+                    <div>
+                        <div class="lead-field-label">Менеджер</div>
+                        <div class="lead-field-value">${esc(m.first_name) || '—'}</div>
+                    </div>
+                    <div>
+                        <div class="lead-field-label">Юзернейм</div>
+                        <div class="lead-field-value">${m.username ? '@' + esc(m.username) : '—'}</div>
+                    </div>
+                    <div>
+                        <div class="lead-field-label">ID</div>
+                        <div class="lead-field-value">${m.user_id}</div>
+                    </div>
+                    <div>
+                        <div class="lead-field-label">В работе сейчас</div>
+                        <div class="lead-field-value">${m.active ?? 0}</div>
+                    </div>
+                    <div>
+                        <div class="lead-field-label">Согласились</div>
+                        <div class="lead-field-value">${m.agreed ?? 0}</div>
+                    </div>
+                    <div>
+                        <div class="lead-field-label">Всего лотов</div>
+                        <div class="lead-field-value">${m.total ?? 0}</div>
+                    </div>
+                </div>
+                <div class="lead-actions">
+                    <button class="btn" style="background:var(--error);color:#fff;" onclick="revokeManager(${m.user_id})">🚫 Снять роль менеджера</button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    async function revokeManager(userId) {
+        if (!confirm('Снять роль менеджера у этого пользователя?')) return;
+        try {
+            await api.request(`/api/crm/managers/${userId}/revoke`, { method: 'POST' });
+            utils.showAlert('Роль менеджера снята', 'success');
+            loadManagersTab();
+        } catch (err) {
+            utils.showAlert(err.message || 'Ошибка', 'error');
+        }
+    }
+
+    async function loadStats() {
+        try {
+            const data = await api.request('/api/crm/stats');
+            const s = data.stats || {};
+            lastStats = s;
+
+            if (IS_ADMIN) {
+                try {
+                    const mineData = await api.request('/api/crm/stats?mine=true');
+                    myStats = mineData.stats || {};
+                } catch (e) {
+                    myStats = null;
+                }
+            } else {
+                try {
+                    const poolData = await api.request('/api/crm/pool_count');
+                    poolCount = poolData.count;
+                } catch (e) {
+                    poolCount = null;
+                }
+            }
+
+            // У админа — общая сводка по всей команде. У менеджера — только
+            // то, что относится к его же вкладкам (иначе «Новые»/«Отказались»
+            // и т.д. в его личной статистике всегда были бы нулями, потому что
+            // это чужие/общие лоты, а не его).
+            const cards = IS_ADMIN
+                ? [
+                    ['Всего', s.total], ['Новые', s.new], ['В работе', s.in_progress],
+                    ['На связи', s.follow_up], ['Согласились', s.agreed], ['Отказались', s.rejected],
+                    ['Нет ответа', s.no_response], ['Невалидные', s.invalid], ['Дубликаты', s.duplicate],
+                ]
+                : [
+                    ['Свободные', poolCount],
+                    ['Мои', (s.in_progress || 0) + (s.follow_up || 0)],
+                    ['Согласились', s.agreed],
+                    ['Отказались', s.rejected],
+                    ['Нет ответа', s.no_response],
+                    ['Невалидные', s.invalid],
+                    ['Дубликаты', s.duplicate],
+                ];
+            document.getElementById('statsGrid').innerHTML = cards.map(([label, value]) => `
+                <div class="stat-card">
+                    <div class="stat-label">${label}</div>
+                    <div class="stat-value">${value ?? 0}</div>
+                </div>
+            `).join('');
+
+            renderTabs();
+        } catch (err) {
+            console.error('stats error', err);
+        }
+    }
+
+    async function loadLeads() {
+        const container = document.getElementById('leadsContainer');
+        container.innerHTML = '<div class="empty-state"><div class="icon">⏳</div>Загрузка...</div>';
+        try {
+            let url = '/api/crm/leads';
+            if (!IS_ADMIN) {
+                if (currentTab === 'pool') {
+                    // без параметров — бэкенд сам отдаёт свободный пул ('new')
+                } else if (currentTab === 'mine') {
+                    url += '?mine=true';
+                } else {
+                    url += `?mine=true&status=${currentTab}`;
+                }
+            } else if (currentTab === 'mine') {
+                url += `?assigned_to=${CURRENT_USER_ID}`;
+            } else if (currentTab === 'deleted') {
+                url += '?deleted=true';
+            } else {
+                url += `?status=${currentTab}`;
+            }
+            const data = await api.request(url);
+            let leads = data.leads || [];
+            if (currentTab === 'mine') {
+                leads = leads.filter(l => ['in_progress', 'follow_up'].includes(l.status));
+            }
+            allLeads = leads;
+            renderSortBar(leads);
+            renderLeads(sortLeads(leads));
+        } catch (err) {
+            container.innerHTML = `<div class="empty-state"><div class="icon">❌</div>Ошибка: ${esc(err.message)}</div>`;
+        }
+    }
+
+    function getExtraKeysUnion(leads) {
+        const keys = new Set();
+        leads.forEach(l => Object.keys(l.extra_data || {}).forEach(k => keys.add(k)));
+        return Array.from(keys);
+    }
+
+    function renderSortBar(leads) {
+        const bar = document.getElementById('sortBar');
+        if (!bar) return;
+        const fields = [...FIXED_SORT_FIELDS];
+        if (IS_ADMIN) fields.push(['assigned_to_name', 'Менеджеру']);
+        if (currentTab === 'mine') fields.unshift(['manual', '↕️ Моему порядку']);
+        getExtraKeysUnion(leads).forEach(k => fields.push([`extra:${k}`, k]));
+
+        if (!fields.some(([key]) => key === currentSortField)) {
+            currentSortField = 'created_at';
+        }
+
+        bar.innerHTML = `
+            <span style="font-size:12px;color:var(--text-secondary);">Сортировка:</span>
+            <select id="sortFieldSelect" class="form-control" style="width:auto;padding:6px 10px;font-size:13px;" onchange="onSortFieldChange()">
+                ${fields.map(([key, label]) => `<option value="${esc(key)}" ${key === currentSortField ? 'selected' : ''}>${esc(label)}</option>`).join('')}
+            </select>
+            <button class="btn" style="background:var(--bg-secondary);color:var(--text-primary);padding:6px 10px;" onclick="toggleSortDir()">${currentSortDir === 'asc' ? '▲' : '▼'}</button>
+        `;
+    }
+
+    let draggedLeadId = null;
+    let dragOverLeadId = null;
+    let dragOverPosition = null;
+    let autoScrollDir = 0;
+    let autoScrollTimer = null;
+
+    function handleDragStart(e, leadId) {
+        draggedLeadId = leadId;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(leadId));
+    }
+
+    function handleDragEnd() {
+        clearDragIndicators();
+        draggedLeadId = null;
+        dragOverLeadId = null;
+        dragOverPosition = null;
+        stopAutoScroll();
+    }
+
+    let autoScrollSpeed = 0;
+
+    function stopAutoScroll() {
+        if (autoScrollTimer) {
+            clearInterval(autoScrollTimer);
+            autoScrollTimer = null;
+        }
+        autoScrollDir = 0;
+        autoScrollSpeed = 0;
+    }
+
+    // Зона у 110px від верху/низу екрана; що ближче до самого краю — то
+    // швидше прокрутка (від 6 до ~34px за тик). Швидкість оновлюється на
+    // кожен dragover, а сам таймер стартує один раз при вході в зону —
+    // так прокрутка плавна, а не смикається.
+    function updateAutoScroll(clientY) {
+        const edge = 110;
+        let dir = 0;
+        let speed = 0;
+        if (clientY < edge) {
+            dir = -1;
+            speed = 6 + (edge - clientY) / edge * 28;
+        } else if (clientY > window.innerHeight - edge) {
+            dir = 1;
+            speed = 6 + (clientY - (window.innerHeight - edge)) / edge * 28;
+        }
+        autoScrollDir = dir;
+        autoScrollSpeed = speed;
+        if (dir === 0) {
+            stopAutoScroll();
+        } else if (!autoScrollTimer) {
+            autoScrollTimer = setInterval(() => window.scrollBy(0, autoScrollDir * autoScrollSpeed), 16);
+        }
+    }
+
+    function clearDragIndicators() {
+        document.querySelectorAll('.drag-indicator-top, .drag-indicator-bottom').forEach(el => {
+            el.classList.remove('drag-indicator-top', 'drag-indicator-bottom');
+        });
+    }
+
+    // Ищем ближайшую по вертикали карточку к курсору (по расстоянию до её
+    // центра), а не буквально ту, над которой курсор в моменте — иначе при
+    // наведении ровно в зазор (margin) между карточками ни одна из них не
+    // получает dragover, и подсказка никогда не появляется.
+    function findDropTarget(clientY) {
+        const cards = Array.from(document.querySelectorAll('#leadsContainer .lead-card'))
+            .filter(el => Number(el.id.slice(5)) !== draggedLeadId);
+        if (!cards.length) return null;
+        let best = null;
+        let bestDist = Infinity;
+        for (const card of cards) {
+            const rect = card.getBoundingClientRect();
+            const mid = rect.top + rect.height / 2;
+            const dist = Math.abs(clientY - mid);
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = { card, mid };
+            }
+        }
+        if (!best) return null;
+        return {
+            leadId: Number(best.card.id.slice(5)),
+            position: clientY < best.mid ? 'before' : 'after',
+            card: best.card,
+        };
+    }
+
+    const leadsContainerEl = document.getElementById('leadsContainer');
+    console.log('[CRM] drag-and-drop script build 2026-09-03-b loaded, container found:', !!leadsContainerEl);
+
+    leadsContainerEl.addEventListener('dragover', (e) => {
+        if (draggedLeadId === null) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        updateAutoScroll(e.clientY);
+        const target = findDropTarget(e.clientY);
+        if (!target) { console.log('[CRM] dragover: no target found'); return; }
+        if (dragOverLeadId === target.leadId && dragOverPosition === target.position) return;
+        clearDragIndicators();
+        dragOverLeadId = target.leadId;
+        dragOverPosition = target.position;
+        target.card.classList.add(target.position === 'before' ? 'drag-indicator-top' : 'drag-indicator-bottom');
+        console.log('[CRM] indicator set on lead', target.leadId, target.position);
+    });
+
+    leadsContainerEl.addEventListener('drop', (e) => {
+        if (draggedLeadId === null) return;
+        e.preventDefault();
+        clearDragIndicators();
+        stopAutoScroll();
+        const sourceLeadId = draggedLeadId;
+        const targetLeadId = dragOverLeadId;
+        const position = dragOverPosition;
+        draggedLeadId = null;
+        dragOverLeadId = null;
+        dragOverPosition = null;
+        if (targetLeadId === null || targetLeadId === sourceLeadId) return;
+
+        const fromIndex = allLeads.findIndex(l => l.lead_id === sourceLeadId);
+        if (fromIndex === -1) return;
+        const [moved] = allLeads.splice(fromIndex, 1);
+        const toIndex = allLeads.findIndex(l => l.lead_id === targetLeadId);
+        if (toIndex === -1) {
+            allLeads.splice(fromIndex, 0, moved);
+            return;
+        }
+        const insertAt = position === 'after' ? toIndex + 1 : toIndex;
+        allLeads.splice(insertAt, 0, moved);
+        currentSortField = 'manual';
+        renderSortBar(allLeads);
+        renderLeads(allLeads);
+        persistManualOrder();
+    });
+
+    async function persistManualOrder() {
+        const formData = new FormData();
+        formData.append('lead_ids', JSON.stringify(allLeads.map(l => l.lead_id)));
+        try {
+            await api.request('/api/crm/leads/reorder', { method: 'POST', body: formData });
+        } catch (err) {
+            utils.showAlert(err.message || 'Не удалось сохранить порядок', 'error');
+        }
+    }
+
+    function onSortFieldChange() {
+        currentSortField = document.getElementById('sortFieldSelect').value;
+        renderLeads(sortLeads(allLeads));
+    }
+
+    function toggleSortDir() {
+        currentSortDir = currentSortDir === 'asc' ? 'desc' : 'asc';
+        renderSortBar(allLeads);
+        renderLeads(sortLeads(allLeads));
+    }
+
+    function getSortValue(lead, field) {
+        if (field.startsWith('extra:')) {
+            return (lead.extra_data || {})[field.slice(6)];
+        }
+        if (field === 'status') {
+            return STATUS_LABELS[lead.status] || lead.status || '';
+        }
+        if (field === 'manual') {
+            return lead.manual_position;
+        }
+        return lead[field];
+    }
+
+    function sortLeads(leads) {
+        const field = currentSortField;
+        const dir = currentSortDir === 'asc' ? 1 : -1;
+        const copy = [...leads];
+        copy.sort((a, b) => {
+            const va = getSortValue(a, field);
+            const vb = getSortValue(b, field);
+            const aEmpty = va === null || va === undefined || va === '';
+            const bEmpty = vb === null || vb === undefined || vb === '';
+            if (aEmpty && bEmpty) return 0;
+            if (aEmpty) return 1;
+            if (bEmpty) return -1;
+            if (typeof va === 'number' && typeof vb === 'number') {
+                return (va - vb) * dir;
+            }
+            return String(va).localeCompare(String(vb), 'ru', { numeric: true, sensitivity: 'base' }) * dir;
+        });
+        return copy;
+    }
+
+    function renderLeads(leads) {
+        const container = document.getElementById('leadsContainer');
+        if (leads.length === 0) {
+            container.innerHTML = '<div class="empty-state"><div class="icon">🗂</div>Пусто.</div>';
+            return;
+        }
+
+        const draggable = currentTab === 'mine';
+        const dragHint = draggable
+            ? `<div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;">↕️ Перетащите карточку, чтобы изменить порядок</div>`
+            : '';
+
+        container.innerHTML = dragHint + leads.map(lead => {
+            const color = STATUS_COLORS[lead.status] || '#6b7280';
+            const label = STATUS_LABELS[lead.status] || lead.status;
+            const dt = lead.created_at ? lead.created_at.slice(0, 16).replace('T', ' ') : '—';
+            const canWork = lead.status === 'new' || ['in_progress', 'follow_up'].includes(lead.status);
+
+            let actions = '';
+            if (currentTab === 'deleted') {
+                actions = `<button class="btn" style="background:var(--success);color:#000;" onclick="restoreLead(${lead.lead_id})">♻️ Восстановить</button>`;
+            } else {
+                if (lead.status === 'new') {
+                    actions = `<button class="btn btn-primary" onclick="takeLead(${lead.lead_id})">🖐 Взять в работу</button>`;
+                } else if (['in_progress', 'follow_up'].includes(lead.status)) {
+                    actions = `
+                        <button class="btn btn-primary" onclick="openCloseModal(${lead.lead_id})">✏️ Закрыть / изменить статус</button>
+                        <button class="btn" style="background:var(--bg-secondary);color:var(--text-primary);" onclick="releaseLead(${lead.lead_id})">↩️ Освободить</button>
+                    `;
+                } else if (IS_ADMIN) {
+                    actions = `<button class="btn" style="background:var(--bg-secondary);color:var(--text-primary);" onclick="releaseLead(${lead.lead_id})">↩️ Вернуть в пул</button>`;
+                }
+                if (IS_ADMIN) {
+                    actions += ` <button class="btn" style="background:var(--error);color:#fff;" onclick="deleteLead(${lead.lead_id})">🗑 Удалить</button>`;
+                }
+            }
+            actions += ` <button class="btn" style="background:var(--bg-secondary);color:var(--text-primary);" onclick="toggleHistory(${lead.lead_id})">🕘 История</button>`;
+
+            const extraEntries = Object.entries(lead.extra_data || {});
+            const extraHtml = extraEntries.map(([k, v]) => `
+                <div>
+                    <div class="lead-field-label">${esc(k)}</div>
+                    <div class="lead-field-value" style="font-size:13px;">${v ? linkifyText(v) : '—'}</div>
+                </div>
+            `).join('');
+
+            return `
+            <div class="lead-card" id="lead-${lead.lead_id}">
+                ${draggable ? `<button type="button" class="drag-handle" draggable="true" ondragstart="handleDragStart(event, ${lead.lead_id})" ondragend="handleDragEnd()" title="Перетащите, чтобы изменить порядок">⠿ Перенести</button>` : ''}
+                <div class="lead-card-body">
+                    <div>
+                        <div class="lead-field-label">Канал/группа</div>
+                        <div class="lead-field-value">${esc(lead.channel_name) || '—'}</div>
+                    </div>
+                    <div>
+                        <div class="lead-field-label">Ссылка</div>
+                        <div class="lead-field-value">${lead.channel_link ? `<a href="${esc(lead.channel_link)}" target="_blank" style="color:var(--accent-primary);">${esc(lead.channel_link)}</a>` : '—'}</div>
+                    </div>
+                    <div>
+                        <div class="lead-field-label">Подписчики</div>
+                        <div class="lead-field-value">${lead.subscribers ?? '—'}</div>
+                    </div>
+                    <div>
+                        <div class="lead-field-label">Категория</div>
+                        <div class="lead-field-value">${esc(lead.category) || '—'}</div>
+                    </div>
+                    <div>
+                        <div class="lead-field-label">Статус</div>
+                        <div><span class="status-badge" style="background:${color}22;color:${color};">${label}</span></div>
+                    </div>
+                    ${IS_ADMIN ? `<div><div class="lead-field-label">Менеджер</div><div class="lead-field-value">${esc(lead.assigned_to_name) || '—'}</div></div>` : ''}
+                    <div>
+                        <div class="lead-field-label">Загружен</div>
+                        <div class="lead-field-value">${dt}</div>
+                    </div>
+                    ${extraHtml}
+                </div>
+                ${lead.notes ? `<div style="margin-bottom:10px;font-size:13px;color:var(--text-secondary);">📝 ${linkifyText(lead.notes)}</div>` : ''}
+                <div class="lead-actions">${actions}</div>
+                <div class="lead-history" id="history-${lead.lead_id}"></div>
+            </div>`;
+        }).join('');
+    }
+
+    async function takeLead(leadId) {
+        try {
+            await api.request(`/api/crm/leads/${leadId}/take`, { method: 'POST' });
+            utils.showAlert('Лот взят в работу', 'success');
+            loadLeads(); loadStats();
+        } catch (err) {
+            utils.showAlert(err.message || 'Ошибка', 'error');
+        }
+    }
+
+    async function releaseLead(leadId) {
+        if (!confirm('Освободить этот лот?')) return;
+        try {
+            await api.request(`/api/crm/leads/${leadId}/release`, { method: 'POST' });
+            utils.showAlert('Лот возвращён в пул', 'success');
+            loadLeads(); loadStats();
+        } catch (err) {
+            utils.showAlert(err.message || 'Ошибка', 'error');
+        }
+    }
+
+    async function deleteLead(leadId) {
+        if (!confirm('Удалить этот лот? Его можно будет восстановить во вкладке «Удалённые».')) return;
+        try {
+            await api.request(`/api/crm/leads/${leadId}/delete`, { method: 'POST' });
+            utils.showAlert('Лот удалён', 'success');
+            loadLeads(); loadStats();
+        } catch (err) {
+            utils.showAlert(err.message || 'Ошибка', 'error');
+        }
+    }
+
+    async function restoreLead(leadId) {
+        try {
+            await api.request(`/api/crm/leads/${leadId}/restore`, { method: 'POST' });
+            utils.showAlert('Лот восстановлен', 'success');
+            loadLeads(); loadStats();
+        } catch (err) {
+            utils.showAlert(err.message || 'Ошибка', 'error');
+        }
+    }
+
+    async function bulkDeleteCurrent() {
+        if (!allLeads.length) {
+            utils.showAlert('Нечего удалять — список пуст', 'error');
+            return;
+        }
+        if (!confirm(`Удалить все лоты на этой вкладке (${allLeads.length} шт.)? Их можно будет восстановить.`)) return;
+        const formData = new FormData();
+        formData.append('lead_ids', JSON.stringify(allLeads.map(l => l.lead_id)));
+        try {
+            const res = await api.request('/api/crm/leads/bulk_delete', { method: 'POST', body: formData });
+            utils.showAlert(`Удалено лотов: ${res.deleted}`, 'success');
+            loadLeads(); loadStats();
+        } catch (err) {
+            utils.showAlert(err.message || 'Ошибка', 'error');
+        }
+    }
+
+    async function bulkRestoreAll() {
+        if (!allLeads.length) {
+            utils.showAlert('Нечего восстанавливать — список пуст', 'error');
+            return;
+        }
+        if (!confirm(`Восстановить все удалённые лоты (${allLeads.length} шт.)?`)) return;
+        try {
+            const res = await api.request('/api/crm/leads/bulk_restore', { method: 'POST' });
+            utils.showAlert(`Восстановлено лотов: ${res.restored}`, 'success');
+            loadLeads(); loadStats();
+        } catch (err) {
+            utils.showAlert(err.message || 'Ошибка', 'error');
+        }
+    }
+
+    function openCloseModal(leadId) {
+        currentLeadIdForClose = leadId;
+        document.getElementById('closeStatusSelect').value = 'agreed';
+        document.getElementById('closeNoteInput').value = '';
+        modal.show('closeLeadModal');
+    }
+
+    async function submitCloseLead() {
+        const status = document.getElementById('closeStatusSelect').value;
+        const note = document.getElementById('closeNoteInput').value;
+        const formData = new FormData();
+        formData.append('status', status);
+        if (note) formData.append('note', note);
+        try {
+            await api.request(`/api/crm/leads/${currentLeadIdForClose}/status`, { method: 'POST', body: formData });
+            modal.hide('closeLeadModal');
+            utils.showAlert('Статус обновлён', 'success');
+            loadLeads(); loadStats();
+        } catch (err) {
+            utils.showAlert(err.message || 'Ошибка', 'error');
+        }
+    }
+
+    async function toggleHistory(leadId) {
+        const el = document.getElementById(`history-${leadId}`);
+        if (el.classList.contains('open')) {
+            el.classList.remove('open');
+            return;
+        }
+        el.innerHTML = 'Загрузка...';
+        el.classList.add('open');
+        try {
+            const data = await api.request(`/api/crm/leads/${leadId}/history`);
+            const rows = (data.history || []).map(h => {
+                const dt = h.created_at ? h.created_at.slice(0, 16).replace('T', ' ') : '';
+                const who = h.first_name || (h.username ? '@' + h.username : h.user_id) || 'система';
+                let text = '';
+                if (h.action === 'imported') text = 'загружен в CRM';
+                else if (h.action === 'taken') text = 'взял в работу';
+                else if (h.action === 'released') text = 'вернул в пул';
+                else if (h.action === 'status_changed') text = `изменил статус: ${STATUS_LABELS[h.from_status] || h.from_status} → ${STATUS_LABELS[h.to_status] || h.to_status}`;
+                const note = h.note ? ` — ${esc(h.note)}` : '';
+                return `<div class="lead-history-row">${dt} · <b>${esc(who)}</b> ${text}${note}</div>`;
+            }).join('');
+            el.innerHTML = rows || 'История пуста.';
+        } catch (err) {
+            el.innerHTML = 'Ошибка загрузки истории.';
+        }
+    }
+
+    async function uploadCsv() {
+        const fileInput = document.getElementById('csvFile');
+        if (!fileInput.files.length) {
+            utils.showAlert('Выберите файл', 'error');
+            return;
+        }
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        try {
+            const res = await api.request('/api/crm/import', { method: 'POST', body: formData });
+            utils.showAlert(`Импортировано: ${res.imported}, пропущено дубликатов: ${res.skipped_duplicates}`, 'success');
+            fileInput.value = '';
+            loadLeads(); loadStats();
+        } catch (err) {
+            utils.showAlert(err.message || 'Ошибка загрузки файла', 'error');
+        }
+    }
+
+    function scrollToTop() {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    window.addEventListener('scroll', () => {
+        const btn = document.getElementById('scrollTopBtn');
+        if (!btn) return;
+        btn.classList.toggle('visible', window.scrollY > 400);
+    });
+
+    renderTabs();
+    loadStats();
+    loadLeads();
+</script>
+{% endblock %}

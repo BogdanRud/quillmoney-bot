@@ -1,0 +1,502 @@
+{% extends "base.html" %}
+
+{% block page_title %}Пользователи{% endblock %}
+
+{% block content %}
+<h2 style="color: var(--text-primary); margin-bottom: 25px; font-size: 28px;">👥 Список пользователей</h2>
+
+<div style="margin-bottom: 20px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+    <input
+        type="text"
+        id="searchInput"
+        placeholder="Поиск по имени, username, ID или телефону..."
+        class="form-control"
+        style="max-width: 400px;"
+    >
+    <button onclick="restoreReferrals()" class="btn btn-warning" id="restoreBtn" title="Найти пользователей, которые пришли по реферальным ссылкам, но рефералы не были засчитаны, и исправить это">
+        🔄 Восстановить рефералы
+    </button>
+    <select id="sortField" class="form-control" style="max-width: 220px;" onchange="updateView()">
+        <option value="created_at">Сортировать: Дата регистрации</option>
+        <option value="user_id">ID</option>
+        <option value="first_name">Имя</option>
+        <option value="username">Username</option>
+        <option value="phone">Телефон</option>
+        <option value="verified_balance">Верифицированный баланс</option>
+        <option value="unverified_balance">Неверифицированный баланс</option>
+        <option value="referrals_count">Рефералы</option>
+        <option value="language">Язык</option>
+        <option value="rules_accepted">Правила</option>
+    </select>
+    <button onclick="toggleSortDir()" id="sortDirBtn" class="btn" style="background: var(--bg-tertiary); color: var(--text-primary);" title="Направление сортировки">⬇️ По убыванию</button>
+</div>
+
+<!-- Модальное окно восстановления рефералов -->
+<div id="restoreModal" class="modal-overlay" style="display:none;">
+    <div class="modal-content" style="max-width:600px;">
+        <div class="modal-header">
+            <h3>🔄 Восстановление рефералов</h3>
+        </div>
+        <div id="restoreResult" style="margin: 15px 0;"></div>
+        <div style="text-align:right; margin-top:15px;">
+            <button onclick="document.getElementById('restoreModal').style.display='none'" class="btn btn-secondary">Закрыть</button>
+        </div>
+    </div>
+</div>
+
+<div id="usersList">
+    <p style="text-align: center; color: var(--text-muted); padding: 40px;">Загрузка...</p>
+</div>
+
+<!-- Модальное окно изменения баланса -->
+<div id="balanceModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Изменить баланс / рефералы</h3>
+        </div>
+        <p id="balanceUserLabel" style="color: var(--text-secondary); margin-bottom: 15px;"></p>
+        <form id="balanceForm">
+            <input type="hidden" id="balanceUserId">
+            <div class="form-group">
+                <label>Верифицированный ($)</label>
+                <input type="number" step="0.01" id="verifiedBalance" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label>Неверифицированный ($)</label>
+                <input type="number" step="0.01" id="unverifiedBalance" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label>Количество рефералов</label>
+                <input type="number" step="1" min="0" id="referralsCount" class="form-control" required>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button type="submit" class="btn btn-primary" style="flex: 1;">Сохранить</button>
+                <button type="button" onclick="hideBalanceModal()" class="btn" style="flex: 1; background: var(--bg-tertiary);">Отмена</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.user-card {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    margin-bottom: 16px;
+    overflow: hidden;
+}
+.user-card.blocked {
+    border-left: 4px solid var(--error);
+    opacity: 0.85;
+}
+.user-card-body {
+    padding: 20px 20px 14px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+}
+.user-field-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 3px;
+}
+.user-field-value {
+    color: var(--text-primary);
+    font-weight: 500;
+    font-size: 14px;
+}
+.user-card-actions {
+    padding: 12px 20px 16px;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.action-btn {
+    padding: 7px 14px;
+    font-size: 12px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: opacity 0.15s;
+}
+.action-btn:hover { opacity: 0.85; }
+.btn-chat    { background: var(--primary); color: #fff; }
+.btn-balance { background: var(--warning); color: #000; }
+.btn-admin-grant  { background: #22c55e; color: #fff; }
+.btn-admin-revoke { background: #f59e0b; color: #000; }
+.btn-moder-grant  { background: #3b82f6; color: #fff; }
+.btn-moder-revoke { background: #6366f1; color: #fff; }
+.btn-block   { background: var(--error); color: #fff; }
+.btn-unblock { background: #0ea5e9; color: #fff; }
+.btn-delete  { background: #7f1d1d; color: #fff; }
+.role-badge {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+}
+.role-admin { background: #7c3aed22; color: #a78bfa; border: 1px solid #7c3aed55; }
+.role-moder { background: #1d4ed822; color: #93c5fd; border: 1px solid #1d4ed855; }
+.role-user  { background: #1e293b; color: var(--text-muted); border: 1px solid var(--border-color); }
+.blocked-badge {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    background: #7f1d1d33;
+    color: #f87171;
+    border: 1px solid #7f1d1d88;
+    margin-left: 6px;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let allUsers = [];
+    let sortDir = 'desc';
+    const LANG_LABELS = { ru: '🇷🇺 RU', en: '🇬🇧 EN', uk: '🇺🇦 UK' };
+
+    async function loadUsers() {
+        try {
+            const data = await api.request('/api/users');
+            allUsers = data.users || [];
+            updateView();
+        } catch (error) {
+            document.getElementById('usersList').innerHTML =
+                '<div class="alert alert-error">Ошибка загрузки пользователей</div>';
+        }
+    }
+
+    function toggleSortDir() {
+        sortDir = sortDir === 'desc' ? 'asc' : 'desc';
+        document.getElementById('sortDirBtn').textContent = sortDir === 'desc' ? '⬇️ По убыванию' : '⬆️ По возрастанию';
+        updateView();
+    }
+
+    function sortUsers(list) {
+        const field = document.getElementById('sortField').value;
+        const sorted = [...list].sort((a, b) => {
+            let av = a[field];
+            let bv = b[field];
+            if (field === 'created_at') {
+                av = av ? new Date(av).getTime() : 0;
+                bv = bv ? new Date(bv).getTime() : 0;
+            } else if (field === 'rules_accepted') {
+                av = av ? 1 : 0;
+                bv = bv ? 1 : 0;
+            } else if (typeof av === 'string' || typeof bv === 'string') {
+                av = (av || '').toString().toLowerCase();
+                bv = (bv || '').toString().toLowerCase();
+            } else {
+                av = av ?? 0;
+                bv = bv ?? 0;
+            }
+            if (av < bv) return -1;
+            if (av > bv) return 1;
+            return 0;
+        });
+        if (sortDir === 'desc') sorted.reverse();
+        return sorted;
+    }
+
+    function updateView() {
+        const query = document.getElementById('searchInput').value.toLowerCase();
+        let filtered = allUsers.filter(user =>
+            user.user_id.toString().includes(query) ||
+            (user.first_name && user.first_name.toLowerCase().includes(query)) ||
+            (user.username && user.username.toLowerCase().includes(query)) ||
+            (user.phone && user.phone.includes(query))
+        );
+        renderUsers(sortUsers(filtered));
+    }
+
+    function renderUsers(users) {
+        const container = document.getElementById('usersList');
+        if (users.length === 0) {
+            container.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:40px;">Нет пользователей</p>';
+            return;
+        }
+
+        container.innerHTML = users.map(user => {
+            const date = user.created_at ? utils.formatDate(user.created_at) : '—';
+            const isAdmin = user.role === 'Admin';
+            const isModer = user.role === 'Moder';
+            const isBlocked = user.is_blocked;
+
+            let roleBadge;
+            if (isAdmin)      roleBadge = `<span class="role-badge role-admin">Admin</span>`;
+            else if (isModer) roleBadge = `<span class="role-badge role-moder">Moder</span>`;
+            else              roleBadge = `<span class="role-badge role-user">User</span>`;
+
+            const blockedBadge = isBlocked ? `<span class="blocked-badge">🔒 Заблок.</span>` : '';
+
+            // Кнопки действий
+            const chatBtn    = `<a href="/admin/chat/${user.user_id}" class="action-btn btn-chat">💬 Чат<span class="notif-badge notif-badge-inline" data-chat-badge="${user.user_id}" style="display:none;"></span></a>`;
+            const balanceBtn = `<button onclick="openBalanceModal(${user.user_id})" class="action-btn btn-balance">💰 Баланс</button>`;
+
+            // Admin role button
+            const adminBtn = isAdmin
+                ? `<button onclick="revokeAdmin(${user.user_id})" class="action-btn btn-admin-revoke">🚫 Снять Admin</button>`
+                : `<button onclick="grantAdmin(${user.user_id})" class="action-btn btn-admin-grant">⭐ Выдать Admin</button>`;
+
+            // Moder role button (только если не Admin)
+            const modrBtn = isAdmin ? '' : (isModer
+                ? `<button onclick="revokeModer(${user.user_id})" class="action-btn btn-moder-revoke">❌ Снять Moder</button>`
+                : `<button onclick="grantModer(${user.user_id})" class="action-btn btn-moder-grant">⭐ Выдать Moder</button>`);
+
+            const blockBtn = isBlocked
+                ? `<button onclick="unblockUser(${user.user_id})" class="action-btn btn-unblock">🔓 Разблокировать</button>`
+                : `<button onclick="blockUser(${user.user_id})" class="action-btn btn-block">🔒 Заблокировать</button>`;
+            // Имя пользователя полностью контролируется им самим (Telegram first_name).
+            // Не вставляем его напрямую в HTML-атрибут/JS-строку — это была бы
+            // классическая инъекция (можно выйти из атрибута символом " или из
+            // JS-строки символом '). Берём имя из закэшированного allUsers по id.
+            const deleteBtn = `<button onclick="deleteUserById(${user.user_id})" class="action-btn btn-delete">🗑 Удалить</button>`;
+
+            return `
+            <div class="user-card ${isBlocked ? 'blocked' : ''}" id="user-card-${user.user_id}">
+                <div class="user-card-body">
+                    <div>
+                        <div class="user-field-label">ID</div>
+                        <div class="user-field-value">${user.user_id}</div>
+                    </div>
+                    <div>
+                        <div class="user-field-label">Имя</div>
+                        <div class="user-field-value">
+                            ${user.first_name ? utils.escapeHtml(user.first_name) : '—'}
+                            ${roleBadge}${blockedBadge}
+                        </div>
+                    </div>
+                    <div>
+                        <div class="user-field-label">Username</div>
+                        <div class="user-field-value">${user.username ? '@' + utils.escapeHtml(user.username) : '—'}</div>
+                    </div>
+                    <div>
+                        <div class="user-field-label">Телефон</div>
+                        <div class="user-field-value">${user.phone ? utils.escapeHtml(user.phone) : '—'}</div>
+                    </div>
+                    <div>
+                        <div class="user-field-label">Верифицированный</div>
+                        <div class="user-field-value" style="color:var(--success);">${utils.formatCurrency(user.verified_balance)}</div>
+                    </div>
+                    <div>
+                        <div class="user-field-label">Неверифицированный</div>
+                        <div class="user-field-value" style="color:var(--text-muted);">${utils.formatCurrency(user.unverified_balance)}</div>
+                    </div>
+                    <div>
+                        <div class="user-field-label">Рефералы</div>
+                        <div class="user-field-value">${user.referrals_count}</div>
+                    </div>
+                    <div>
+                        <div class="user-field-label">Приглашён</div>
+                        <div class="user-field-value">${user.referred_by
+                            ? `<span title="ID: ${user.referred_by}">${utils.escapeHtml(user.referred_by_name || user.referred_by)}${user.referred_by_username ? ' (@' + utils.escapeHtml(user.referred_by_username) + ')' : ''}</span>`
+                            : '—'}</div>
+                    </div>
+                    <div>
+                        <div class="user-field-label">Дата регистрации</div>
+                        <div class="user-field-value">${date}</div>
+                    </div>
+                    <div>
+                        <div class="user-field-label">Язык</div>
+                        <div class="user-field-value">${LANG_LABELS[user.language] || (user.language || '—')}</div>
+                    </div>
+                    <div>
+                        <div class="user-field-label">Правила</div>
+                        <div class="user-field-value" style="color: ${user.rules_accepted ? 'var(--success)' : 'var(--error)'}; font-weight: 600;">
+                            ${user.rules_accepted ? '✅ Принял' : '⚠️ Не принял'}
+                        </div>
+                    </div>
+                </div>
+                <div class="user-card-actions">
+                    ${chatBtn}
+                    ${balanceBtn}
+                    ${adminBtn}
+                    ${modrBtn}
+                    ${blockBtn}
+                    ${deleteBtn}
+                </div>
+            </div>`;
+        }).join('');
+        notifications.applyChatBadges();
+    }
+
+    function openBalanceModal(userId) {
+        const user = allUsers.find(u => u.user_id === userId);
+        if (!user) return;
+        document.getElementById('balanceUserId').value = user.user_id;
+        document.getElementById('balanceUserLabel').textContent =
+            `Пользователь: ${user.first_name || user.user_id} (ID ${user.user_id})`;
+        document.getElementById('verifiedBalance').value = user.verified_balance;
+        document.getElementById('unverifiedBalance').value = user.unverified_balance;
+        document.getElementById('referralsCount').value = user.referrals_count;
+        document.getElementById('balanceModal').style.display = 'flex';
+    }
+
+    function hideBalanceModal() {
+        document.getElementById('balanceModal').style.display = 'none';
+    }
+
+    document.getElementById('balanceForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const userId = document.getElementById('balanceUserId').value;
+        const formData = new FormData();
+        formData.append('verified_balance', document.getElementById('verifiedBalance').value);
+        formData.append('unverified_balance', document.getElementById('unverifiedBalance').value);
+        formData.append('referrals_count', document.getElementById('referralsCount').value);
+        try {
+            await api.request(`/api/users/${userId}/balance`, { method: 'POST', body: formData });
+            utils.showAlert('Баланс обновлён', 'success');
+            hideBalanceModal();
+            loadUsers();
+        } catch (err) {
+            utils.showAlert(err.message || 'Ошибка', 'error');
+        }
+    });
+
+    async function grantAdmin(userId) {
+        if (!confirm('Выдать роль Admin этому пользователю?')) return;
+        try {
+            await api.request(`/api/users/${userId}/grant_admin`, { method: 'POST' });
+            utils.showAlert('Роль Admin выдана', 'success');
+            loadUsers();
+        } catch (err) {
+            utils.showAlert(err.message || 'Ошибка', 'error');
+        }
+    }
+
+    async function revokeAdmin(userId) {
+        if (!confirm('Снять роль Admin у этого пользователя?')) return;
+        try {
+            await api.request(`/api/users/${userId}/revoke_admin`, { method: 'POST' });
+            utils.showAlert('Роль Admin снята', 'success');
+            loadUsers();
+        } catch (err) {
+            utils.showAlert(err.message || 'Ошибка', 'error');
+        }
+    }
+
+    async function grantModer(userId) {
+        if (!confirm('Выдать роль Moderator этому пользователю?')) return;
+        try {
+            await api.request(`/api/users/${userId}/grant_moder`, { method: 'POST' });
+            utils.showAlert('Роль Moderator выдана', 'success');
+            loadUsers();
+        } catch (err) {
+            utils.showAlert(err.message || 'Ошибка', 'error');
+        }
+    }
+
+    async function revokeModer(userId) {
+        if (!confirm('Снять роль Moderator у этого пользователя?')) return;
+        try {
+            await api.request(`/api/users/${userId}/revoke_moder`, { method: 'POST' });
+            utils.showAlert('Роль Moderator снята', 'success');
+            loadUsers();
+        } catch (err) {
+            utils.showAlert(err.message || 'Ошибка', 'error');
+        }
+    }
+
+    async function blockUser(userId) {
+        if (!confirm('Заблокировать пользователя? Он не сможет пользоваться ботом.')) return;
+        try {
+            await api.request(`/api/users/${userId}/block`, { method: 'POST' });
+            utils.showAlert('Пользователь заблокирован', 'success');
+            loadUsers();
+        } catch (err) {
+            utils.showAlert(err.message || 'Ошибка', 'error');
+        }
+    }
+
+    async function unblockUser(userId) {
+        if (!confirm('Разблокировать пользователя?')) return;
+        try {
+            await api.request(`/api/users/${userId}/unblock`, { method: 'POST' });
+            utils.showAlert('Пользователь разблокирован', 'success');
+            loadUsers();
+        } catch (err) {
+            utils.showAlert(err.message || 'Ошибка', 'error');
+        }
+    }
+
+    function deleteUserById(userId) {
+        const user = allUsers.find(u => u.user_id === userId);
+        const name = (user && (user.first_name || user.username)) || userId;
+        return deleteUser(userId, name);
+    }
+
+    async function deleteUser(userId, name) {
+        if (!confirm(`Удалить пользователя "${name}" (ID: ${userId})?\n\nВсе данные будут удалены безвозвратно!`)) return;
+        if (!confirm('Подтвердите ещё раз — это действие необратимо!')) return;
+        try {
+            await api.request(`/api/users/${userId}/delete`, { method: 'POST' });
+            utils.showAlert('Пользователь удалён', 'success');
+            loadUsers();
+        } catch (err) {
+            utils.showAlert(err.message || 'Ошибка', 'error');
+        }
+    }
+
+    document.getElementById('searchInput').addEventListener('input', updateView);
+
+    async function restoreReferrals() {
+        const btn = document.getElementById('restoreBtn');
+        const modal = document.getElementById('restoreModal');
+        const resultDiv = document.getElementById('restoreResult');
+
+        if (!confirm('Бот просканирует логи и восстановит рефералы для пользователей, у которых они не были засчитаны из-за бага.\n\nРефереры получат бонус за каждого такого пользователя.\n\nПродолжить?')) return;
+
+        btn.disabled = true;
+        btn.textContent = '⏳ Восстанавливаем...';
+        resultDiv.innerHTML = '<p style="color:var(--text-muted);">Сканирование логов...</p>';
+        modal.style.display = 'flex';
+
+        try {
+            const data = await api.request('/api/users/restore-referrals', { method: 'POST' });
+
+            let html = `<p style="color:var(--success); font-size:16px; font-weight:600;">✅ Готово! Восстановлено: <b>${data.restored_count}</b>, Пропущено: <b>${data.skipped_count}</b></p>`;
+
+            if (data.restored.length > 0) {
+                html += `<div style="margin-top:12px;"><b>Восстановленные рефералы:</b><ul style="margin-top:8px; padding-left:20px;">`;
+                for (const r of data.restored) {
+                    html += `<li>Пользователь <code>${r.user_id}</code> → пригласил <b>${r.referrer_name}</b> (ID: ${r.referrer_id})`;
+                    if (r.bonus_given > 0) html += ` — бонус $${r.bonus_given.toFixed(2)} начислен`;
+                    html += `</li>`;
+                }
+                html += `</ul></div>`;
+            }
+
+            if (data.skipped.length > 0) {
+                const reasons = { referrer_not_found: 'реферер не найден в БД', self_referral: 'попытка пригласить себя', already_set: 'уже был задан', empty_code: 'пустой код' };
+                html += `<div style="margin-top:12px; color:var(--text-muted);"><b>Пропущено:</b><ul style="margin-top:8px; padding-left:20px;">`;
+                for (const s of data.skipped) {
+                    html += `<li>ID ${s.user_id}: ${reasons[s.reason] || s.reason}${s.code ? ' (код: ' + s.code + ')' : ''}</li>`;
+                }
+                html += `</ul></div>`;
+            }
+
+            resultDiv.innerHTML = html;
+            if (data.restored_count > 0) loadUsers();
+        } catch (err) {
+            resultDiv.innerHTML = `<p style="color:var(--danger);">❌ Ошибка: ${err.message || 'Что-то пошло не так'}</p>`;
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '🔄 Восстановить рефералы';
+        }
+    }
+
+    loadUsers();
+</script>
+{% endblock %}

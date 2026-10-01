@@ -1,0 +1,339 @@
+{% extends "base.html" %}
+
+{% block page_title %}Заявки на вывод{% endblock %}
+
+{% block content %}
+<h2 style="color: var(--text-primary); margin-bottom: 25px; font-size: 28px;">💸 Заявки на вывод средств</h2>
+
+<div style="margin-bottom: 20px; display: flex; gap: 10px;">
+    <button class="btn filter-btn btn-primary" data-tab="active" onclick="switchTab('active')" style="padding: 8px 20px;">Активные</button>
+    <button class="btn filter-btn" data-tab="history" onclick="switchTab('history')" style="padding: 8px 20px;">История</button>
+</div>
+
+<div id="withdrawalsList">
+    <p style="text-align: center; color: var(--text-muted); padding: 40px;">Загрузка...</p>
+</div>
+
+<div id="postWithdrawalModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 650px;">
+        <div class="modal-header">
+            <h3>📤 Опубликовать вывод в канал</h3>
+        </div>
+        <div style="max-height: 70vh; overflow-y: auto;">
+            <div class="form-group">
+                <label>Сумма ($)</label>
+                <input type="number" id="postAmount" step="0.01" min="0" class="form-control" oninput="regeneratePostText()">
+            </div>
+            <div class="form-group">
+                <label>Текст поста</label>
+                <textarea id="postText" class="form-control" rows="4"></textarea>
+                <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                    Поддерживается HTML-разметка Telegram. Если у получателя есть публичный @username — слово «Пользователь» уже сделано ссылкой на его профиль (t.me/username); если username нет — останется обычным текстом.
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Скриншот(ы) — вставьте из буфера (Ctrl+V), перетащите или выберите файл</label>
+                <div id="postDropZone" tabindex="0" style="border: 2px dashed var(--border-color); border-radius: 10px; padding: 20px; text-align: center; cursor: pointer; color: var(--text-muted);">
+                    📎 Нажмите, перетащите файл(ы) сюда или вставьте (Ctrl+V)
+                </div>
+                <input type="file" id="postFileInput" accept="image/*" multiple style="display: none;">
+                <div id="postImagePreviews" style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px;"></div>
+            </div>
+        </div>
+        <div style="margin-top: 20px; display: flex; gap: 10px;">
+            <button type="button" onclick="modal.hide('postWithdrawalModal')" class="btn" style="flex: 1; background: var(--bg-tertiary); color: var(--text-primary);">
+                Отмена
+            </button>
+            <button type="button" id="postSubmitBtn" onclick="submitWithdrawalPost()" class="btn btn-primary" style="flex: 1;">
+                📤 Запостить
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentTab = 'active';
+
+    function switchTab(tab) {
+        currentTab = tab;
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.classList.toggle('btn-primary', btn.dataset.tab === tab);
+        });
+        if (tab === 'active') {
+            loadWithdrawals();
+        } else {
+            loadWithdrawalsHistory();
+        }
+    }
+
+    function statusBadge(status) {
+        if (status === 'accepted') return '<span style="color: var(--success); font-weight: 600;">✅ Выполнено</span>';
+        if (status === 'rejected') return '<span style="color: var(--error); font-weight: 600;">❌ Отклонено</span>';
+        return '<span style="color: var(--text-muted);">⏳ В обработке</span>';
+    }
+
+    function renderWithdrawalCard(w, showActions) {
+        const date = w.created_at ? utils.formatDate(w.created_at) : 'Нет';
+        const borderColor = w.status === 'accepted' ? 'var(--success)' : (w.status === 'rejected' ? 'var(--error)' : 'var(--error)');
+        const rawUsername = (w.username && w.username.startsWith('@')) ? w.username.slice(1) : '';
+        return `
+            <div style="background: var(--bg-tertiary); padding: 25px; border-radius: 12px; margin-bottom: 15px; border: 1px solid var(--border-color); border-left: 4px solid ${borderColor};">
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px;">
+                    <div style="flex: 1;">
+                        <h3 style="color: var(--text-primary); margin-bottom: 15px; font-size: 20px;">
+                            Заявка #${w.request_id}
+                            ${!showActions ? `<span style="margin-left: 12px; font-size: 14px;">${statusBadge(w.status)}</span>` : ''}
+                        </h3>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                            <div>
+                                <div style="color: var(--text-secondary); font-size: 12px; margin-bottom: 5px;">Пользователь</div>
+                                <div style="color: var(--text-primary); font-weight: 600;">${utils.escapeHtml(w.user_name)} (${utils.escapeHtml(w.username)})</div>
+                            </div>
+                            <div>
+                                <div style="color: var(--text-secondary); font-size: 12px; margin-bottom: 5px;">ID</div>
+                                <div style="color: var(--text-primary);">${w.user_id}</div>
+                            </div>
+                            <div>
+                                <div style="color: var(--text-secondary); font-size: 12px; margin-bottom: 5px;">Телефон</div>
+                                <div style="color: var(--text-primary);">${utils.escapeHtml(w.phone)}</div>
+                            </div>
+                            <div>
+                                <div style="color: var(--text-secondary); font-size: 12px; margin-bottom: 5px;">Сумма</div>
+                                <div style="color: var(--error); font-weight: 700; font-size: 24px;">${utils.formatCurrency(w.amount)}</div>
+                            </div>
+                            <div>
+                                <div style="color: var(--text-secondary); font-size: 12px; margin-bottom: 5px;">Верифицированный баланс</div>
+                                <div style="color: var(--success); font-weight: 600;">${utils.formatCurrency(w.verified_balance)}</div>
+                            </div>
+                            <div>
+                                <div style="color: var(--text-secondary); font-size: 12px; margin-bottom: 5px;">Дата</div>
+                                <div style="color: var(--text-primary);">${date}</div>
+                            </div>
+                            <div>
+                                <div style="color: var(--text-secondary); font-size: 12px; margin-bottom: 5px;">Правила бота</div>
+                                <div style="font-weight: 600; color: ${w.rules_accepted ? 'var(--success)' : 'var(--error)'};">
+                                    ${w.rules_accepted ? '✅ Принял' : '⚠️ НЕ принял'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="text-align: right; margin-left: 20px;">
+                        <a href="/admin/chat/${w.user_id}" class="btn btn-primary" style="display: block; margin-bottom: 10px; padding: 10px 20px; font-size: 14px;">
+                            💬 Переписка
+                            <span class="notif-badge notif-badge-inline" data-chat-badge="${w.user_id}" style="display:none;"></span>
+                        </a>
+                        ${showActions ? `
+                        <button onclick="acceptWithdrawal(${w.request_id})" class="btn btn-success" style="padding: 10px 20px; font-size: 14px; font-weight: 600; margin-bottom: 8px;">
+                            ✅ Принять
+                        </button>
+                        <button onclick="rejectWithdrawal(${w.request_id})" class="btn" style="padding: 10px 20px; font-size: 14px; font-weight: 600; background: var(--error); color: white; display: block; width: 100%;">
+                            ❌ Отклонить
+                        </button>
+                        ` : `
+                        <button onclick="openPostModal(${w.request_id}, ${w.amount}, '${rawUsername}')" class="btn btn-primary" style="padding: 10px 20px; font-size: 14px; font-weight: 600; display: block; width: 100%;">
+                            📤 Запостить
+                        </button>
+                        ${w.posted_to_channel_at ? `<div style="margin-top: 8px; font-size: 12px; color: var(--success);">✅ Опубликовано</div>` : ''}
+                        `}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    async function loadWithdrawals() {
+        try {
+            const data = await api.request('/api/withdrawals');
+            const withdrawalsList = document.getElementById('withdrawalsList');
+
+            if (data.withdrawals && data.withdrawals.length > 0) {
+                withdrawalsList.innerHTML = data.withdrawals.map(w => renderWithdrawalCard(w, true)).join('');
+            } else {
+                withdrawalsList.innerHTML = '<p style="text-align: center; color: var(--text-muted); padding: 40px;">Нет заявок на вывод</p>';
+            }
+            notifications.applyChatBadges();
+        } catch (error) {
+            console.error('Ошибка загрузки заявок:', error);
+            document.getElementById('withdrawalsList').innerHTML =
+                '<div class="alert alert-error">Ошибка загрузки</div>';
+        }
+    }
+
+    async function loadWithdrawalsHistory() {
+        try {
+            const data = await api.request('/api/withdrawals/history');
+            const withdrawalsList = document.getElementById('withdrawalsList');
+
+            if (data.withdrawals && data.withdrawals.length > 0) {
+                withdrawalsList.innerHTML = data.withdrawals.map(w => renderWithdrawalCard(w, false)).join('');
+            } else {
+                withdrawalsList.innerHTML = '<p style="text-align: center; color: var(--text-muted); padding: 40px;">История пуста</p>';
+            }
+            notifications.applyChatBadges();
+        } catch (error) {
+            console.error('Ошибка загрузки истории:', error);
+            document.getElementById('withdrawalsList').innerHTML =
+                '<div class="alert alert-error">Ошибка загрузки</div>';
+        }
+    }
+
+    async function acceptWithdrawal(requestId) {
+        if (!confirm('Принять заявку на вывод? Средства будут списаны с баланса пользователя.')) {
+            return;
+        }
+        try {
+            await api.request(`/api/withdrawals/${requestId}/accept`, { method: 'POST' });
+            utils.showAlert('Заявка принята!', 'success');
+            loadWithdrawals();
+        } catch (error) {
+            utils.showAlert(error.message || 'Ошибка принятия заявки', 'error');
+        }
+    }
+
+    async function rejectWithdrawal(requestId) {
+        if (!confirm('Отклонить заявку? Средства останутся на балансе пользователя.')) {
+            return;
+        }
+        try {
+            await api.request(`/api/withdrawals/${requestId}/reject`, { method: 'POST' });
+            utils.showAlert('Заявка отклонена', 'success');
+            loadWithdrawals();
+        } catch (error) {
+            utils.showAlert(error.message || 'Ошибка отклонения заявки', 'error');
+        }
+    }
+
+    // ── Публикация скриншота выплаты в канале ─────────────────────────────
+
+    const postState = { requestId: null, username: '', images: [] };
+
+    function buildPostText(amount, username) {
+        const num = parseFloat(amount);
+        const formatted = isNaN(num) ? '0.00' : num.toFixed(2);
+        // Ссылка на t.me/username — надёжно кликабельна в постах каналов
+        // (в отличие от tg://user?id=, которую многие клиенты там не рендерят).
+        // Само слово остаётся обезличенным "Пользователь" для читателей канала.
+        const userLabel = username
+            ? `<a href="https://t.me/${username}">Пользователь</a>`
+            : 'Пользователь';
+        return `💰 | ${userLabel} получил $${formatted} на свою карту!`;
+    }
+
+    function regeneratePostText() {
+        document.getElementById('postText').value = buildPostText(document.getElementById('postAmount').value, postState.username);
+    }
+
+    function openPostModal(requestId, amount, username) {
+        postState.requestId = requestId;
+        postState.username = username;
+        postState.images = [];
+        document.getElementById('postAmount').value = parseFloat(amount).toFixed(2);
+        document.getElementById('postText').value = buildPostText(amount, username);
+        renderImagePreviews();
+        modal.show('postWithdrawalModal');
+    }
+
+    function renderImagePreviews() {
+        const container = document.getElementById('postImagePreviews');
+        container.innerHTML = postState.images.map((file, i) => `
+            <div style="position: relative;">
+                <img src="${URL.createObjectURL(file)}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border-color);">
+                <button type="button" onclick="removePostImage(${i})"
+                        style="position: absolute; top: -6px; right: -6px; background: var(--error); color: #fff; border: none; border-radius: 50%; width: 22px; height: 22px; cursor: pointer; font-size: 12px; line-height: 1;">✕</button>
+            </div>
+        `).join('');
+    }
+
+    function removePostImage(index) {
+        postState.images.splice(index, 1);
+        renderImagePreviews();
+    }
+
+    function addPostImages(fileList) {
+        for (const file of fileList) {
+            if (file.type && file.type.startsWith('image/')) {
+                postState.images.push(file);
+            }
+        }
+        renderImagePreviews();
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const dropZone = document.getElementById('postDropZone');
+        const fileInput = document.getElementById('postFileInput');
+        if (!dropZone) return;
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => {
+            addPostImages(e.target.files);
+            fileInput.value = '';
+        });
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = 'var(--accent-primary)';
+        });
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.style.borderColor = 'var(--border-color)';
+        });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = 'var(--border-color)';
+            addPostImages(e.dataTransfer.files);
+        });
+
+        // Вставка скриншота из буфера обмена — работает, пока открыта модалка публикации
+        document.addEventListener('paste', (e) => {
+            const modalEl = document.getElementById('postWithdrawalModal');
+            if (!modalEl || !modalEl.classList.contains('show')) return;
+            const items = e.clipboardData && e.clipboardData.items;
+            if (!items) return;
+            const files = [];
+            for (const item of items) {
+                if (item.type && item.type.startsWith('image/')) {
+                    const file = item.getAsFile();
+                    if (file) files.push(file);
+                }
+            }
+            if (files.length) {
+                e.preventDefault();
+                addPostImages(files);
+            }
+        });
+    });
+
+    async function submitWithdrawalPost() {
+        const btn = document.getElementById('postSubmitBtn');
+        const text = document.getElementById('postText').value.trim();
+        if (!text) {
+            utils.showAlert('Текст поста не может быть пустым', 'error');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('text', text);
+        postState.images.forEach((file) => {
+            formData.append('images', file, file.name || 'screenshot.png');
+        });
+
+        utils.showLoading(btn);
+        try {
+            await api.request(`/api/withdrawals/${postState.requestId}/post_to_channel`, {
+                method: 'POST',
+                body: formData,
+            });
+            utils.hideLoading(btn, '📤 Запостить');
+            modal.hide('postWithdrawalModal');
+            utils.showAlert('Опубликовано в канале!', 'success');
+            loadWithdrawalsHistory();
+        } catch (error) {
+            utils.hideLoading(btn, '📤 Запостить');
+            utils.showAlert(error.message || 'Ошибка публикации', 'error');
+        }
+    }
+
+    loadWithdrawals();
+</script>
+{% endblock %}

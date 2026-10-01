@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block page_title %}Рассылка сообщений{% endblock %}
+
+{% block content %}
+<h2 style="color: var(--text-primary); margin-bottom: 25px; font-size: 28px;">📨 Рассылка сообщений</h2>
+
+<form id="broadcastForm" enctype="multipart/form-data">
+    <div class="form-group">
+        <label>Текст сообщения</label>
+        <textarea name="message_text" rows="6" placeholder="Введите текст сообщения..." class="form-control" style="resize: vertical;"></textarea>
+    </div>
+    
+    <div class="form-group">
+        <label>Фото</label>
+        <input type="file" name="photo_file" accept="image/*" class="form-control" id="photoFileInput">
+        <small style="color: var(--text-muted); font-size: 12px; margin-top: 5px; display: block;">
+            Или укажите URL/file_id:
+        </small>
+        <input type="text" name="photo" placeholder="https://example.com/photo.jpg или file_id" class="form-control" style="margin-top: 10px;">
+    </div>
+    
+    <div class="form-group">
+        <label>Инлайн кнопки (JSON формат)</label>
+        <textarea name="inline_buttons" rows="8" placeholder='[
+  [
+    {"text": "Название кнопки", "url": "https://example.com"}
+  ],
+  [
+    {"text": "Кнопка 2", "url": "https://example.com"},
+    {"text": "Кнопка 3", "url": "https://example.com"}
+  ]
+]' class="form-control" style="font-family: monospace; font-size: 12px;"></textarea>
+        <small style="color: var(--text-muted); font-size: 12px; margin-top: 5px; display: block;">
+            Каждый внутренний массив — это ряд кнопок. Одна кнопка в ряду = на всю ширину.
+        </small>
+    </div>
+    
+    <div style="display: flex; gap: 15px; margin-top: 25px;">
+        <button type="submit" class="btn btn-primary" style="flex: 1;">📨 Отправить рассылку</button>
+        <button type="button" onclick="previewMessage()" class="btn" style="background: var(--bg-tertiary); color: var(--text-primary);">👁️ Предпросмотр</button>
+    </div>
+</form>
+
+<div id="preview" style="margin-top: 30px; display: none;">
+    <h3 style="margin-bottom: 15px; color: var(--text-primary);">Предпросмотр:</h3>
+    <div style="background: var(--bg-tertiary); padding: 20px; border-radius: 12px; border: 1px solid var(--border-color);" id="previewContent"></div>
+</div>
+
+<div id="result" style="margin-top: 20px;"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function previewMessage() {
+        const form = document.getElementById('broadcastForm');
+        const messageText = form.message_text.value;
+        const photoInput = form.photo_file;
+        const photoUrl = form.photo.value;
+        const buttonsText = form.inline_buttons.value;
+        
+        const preview = document.getElementById('preview');
+        const previewContent = document.getElementById('previewContent');
+        
+        let html = '';
+        
+        // Показываем фото из файла или URL
+        if (photoInput.files && photoInput.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                html += `<img src="${e.target.result}" style="max-width: 100%; border-radius: 8px; margin-bottom: 15px;">`;
+                if (messageText) {
+                    html += `<div style="color: var(--text-primary); white-space: pre-wrap; margin-bottom: 15px;">${messageText}</div>`;
+                }
+                renderButtons(buttonsText, html, previewContent, preview);
+            };
+            reader.readAsDataURL(photoInput.files[0]);
+            return;
+        } else if (photoUrl) {
+            html += `<img src="${photoUrl}" style="max-width: 100%; border-radius: 8px; margin-bottom: 15px;" onerror="this.style.display='none'">`;
+        }
+        
+        if (messageText) {
+            html += `<div style="color: var(--text-primary); white-space: pre-wrap; margin-bottom: 15px;">${messageText}</div>`;
+        }
+        
+        renderButtons(buttonsText, html, previewContent, preview);
+    }
+    
+    function renderButtons(buttonsText, html, previewContent, preview) {
+        if (buttonsText) {
+            try {
+                const buttons = JSON.parse(buttonsText);
+                html += '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px;">';
+                buttons.forEach(row => {
+                    row.forEach(btn => {
+                        html += `<button style="padding: 8px 16px; background: var(--accent-primary); color: white; border: none; border-radius: 8px; cursor: pointer;">${btn.text}</button>`;
+                    });
+                });
+                html += '</div>';
+            } catch (e) {
+                html += '<div class="alert alert-error">Ошибка в формате кнопок</div>';
+            }
+        }
+        
+        previewContent.innerHTML = html || '<div style="color: var(--text-muted);">Заполните форму для предпросмотра</div>';
+        preview.style.display = 'block';
+    }
+    
+    document.getElementById('broadcastForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const submitBtn = e.target.querySelector('button[type="submit"]');
+        const resultDiv = document.getElementById('result');
+        
+        utils.showLoading(submitBtn);
+        resultDiv.innerHTML = '';
+        
+        try {
+            const data = await api.request('/api/broadcast', {
+                method: 'POST',
+                body: formData
+            });
+            
+            utils.showAlert(
+                data.message || `Рассылка запущена для ${data.sent} пользователей`,
+                'success'
+            );
+            
+            e.target.reset();
+            document.getElementById('preview').style.display = 'none';
+        } catch (error) {
+            utils.showAlert(error.message || 'Ошибка отправки рассылки', 'error');
+        } finally {
+            utils.hideLoading(submitBtn, '📨 Отправить рассылку');
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,41 @@
+# systemd-юнит для веб-панели (FastAPI/uvicorn).
+# Скопировать в /etc/systemd/system/quillmoney-webadmin.service, затем:
+#   systemctl daemon-reload
+#   systemctl enable --now quillmoney-webadmin
+#
+# ВАЖНО: слушаем только YOUR_SERVER_IP — наружу панель открывает Nginx (см.
+# nginx-admin.conf), который терминирует TLS. Порт 8000 НЕ должен быть
+# открыт во внешний firewall.
+
+[Unit]
+Description=QuillMoney Web Admin Panel
+After=network.target
+
+[Service]
+Type=simple
+User=quillmoney
+Group=quillmoney
+WorkingDirectory=/opt/quillmoney
+ExecStart=/opt/quillmoney/venv/bin/python -m uvicorn web_admin.main:app --host YOUR_SERVER_IP --port 8000
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/quillmoney
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

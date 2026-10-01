@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+
+{% block page_title %}Апелляции{% endblock %}
+
+{% block extra_css %}
+<style>
+.appeal-card {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-left: 4px solid var(--error);
+    border-radius: 14px;
+    margin-bottom: 16px;
+    overflow: hidden;
+}
+.appeal-card.closed {
+    border-left-color: var(--text-muted);
+    opacity: 0.65;
+}
+.appeal-body {
+    padding: 18px 20px 14px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+}
+.appeal-field-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 3px;
+}
+.appeal-field-value {
+    color: var(--text-primary);
+    font-weight: 500;
+    font-size: 14px;
+}
+.appeal-message {
+    margin: 0 20px 14px;
+    padding: 12px 14px;
+    background: var(--bg-secondary);
+    border-radius: 10px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    border-left: 3px solid var(--warning);
+}
+.appeal-message .msg-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 5px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+.appeal-actions {
+    padding: 10px 20px 16px;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+.badge-open   { background:#7f1d1d33; color:#f87171; border:1px solid #7f1d1d88; }
+.badge-closed { background:#1e293b;   color:var(--text-muted); border:1px solid var(--border-color); }
+.badge {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+}
+.filter-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+.filter-tab {
+    padding: 7px 18px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-tertiary);
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.15s;
+}
+.filter-tab.active, .filter-tab:hover {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+}
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted);
+    font-size: 15px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+    <h2 style="color:var(--text-primary);font-size:28px;">🚫 Апелляции</h2>
+    <button onclick="loadAppeals()" class="btn" style="background:var(--bg-tertiary);color:var(--text-primary);">🔄 Обновить</button>
+</div>
+
+<div class="filter-tabs">
+    <button class="filter-tab active" onclick="setFilter('open', this)">🔴 Открытые</button>
+    <button class="filter-tab" onclick="setFilter('closed', this)">✅ Закрытые</button>
+    <button class="filter-tab" onclick="setFilter('all', this)">📋 Все</button>
+</div>
+
+<div id="appealsList">
+    <p style="text-align:center;color:var(--text-muted);padding:40px;">Загрузка...</p>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let allAppeals = [];
+let currentFilter = 'open';
+
+async function loadAppeals() {
+    try {
+        const data = await api.request('/api/appeals');
+        allAppeals = data.appeals || [];
+        renderAppeals();
+    } catch (err) {
+        document.getElementById('appealsList').innerHTML =
+            '<div class="alert alert-error">Ошибка загрузки апелляций</div>';
+    }
+}
+
+function setFilter(filter, btn) {
+    currentFilter = filter;
+    document.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderAppeals();
+}
+
+function renderAppeals() {
+    const container = document.getElementById('appealsList');
+    let list = allAppeals;
+
+    if (currentFilter === 'open')   list = allAppeals.filter(a => a.status !== 'closed');
+    if (currentFilter === 'closed') list = allAppeals.filter(a => a.status === 'closed');
+
+    if (!list.length) {
+        container.innerHTML = `<div class="empty-state">
+            ${currentFilter === 'open' ? '✅ Открытых апелляций нет' : 'Нет записей'}
+        </div>`;
+        return;
+    }
+
+    container.innerHTML = list.map(a => {
+        const isClosed = a.status === 'closed';
+        const date = a.created_at ? utils.formatDate(a.created_at) : '—';
+        const statusBadge = isClosed
+            ? `<span class="badge badge-closed">Закрыта</span>`
+            : `<span class="badge badge-open">Открыта</span>`;
+        const username = a.username ? `@${escHtml(a.username)}` : '—';
+
+        const chatBtn = `<a href="/admin/chat/${a.user_id}" class="btn" style="background:var(--primary);color:#fff;font-size:12px;padding:7px 14px;border-radius:8px;text-decoration:none;">💬 Открыть чат<span class="notif-badge notif-badge-inline" data-chat-badge="${a.user_id}" style="display:none;"></span></a>`;
+
+        const actionBtns = isClosed ? '' : `
+            <button onclick="approveAppeal(${a.ticket_id}, ${a.user_id})"
+                style="background:#22c55e;color:#fff;border:none;padding:7px 16px;border-radius:8px;cursor:pointer;font-weight:600;font-size:12px;">
+                ✅ Разблокировать
+            </button>
+            <button onclick="rejectAppeal(${a.ticket_id}, ${a.user_id})"
+                style="background:var(--error);color:#fff;border:none;padding:7px 16px;border-radius:8px;cursor:pointer;font-weight:600;font-size:12px;">
+                ❌ Отклонить
+            </button>`;
+
+        const msgBlock = a.last_message ? `
+            <div class="appeal-message">
+                <div class="msg-label">💬 Сообщение пользователя</div>
+                ${escHtml(a.last_message)}
+            </div>` : '';
+
+        return `
+        <div class="appeal-card ${isClosed ? 'closed' : ''}" id="appeal-${a.ticket_id}">
+            <div class="appeal-body">
+                <div>
+                    <div class="appeal-field-label">ID / Статус</div>
+                    <div class="appeal-field-value">#${a.ticket_id} ${statusBadge}</div>
+                </div>
+                <div>
+                    <div class="appeal-field-label">Пользователь</div>
+                    <div class="appeal-field-value">${escHtml(a.first_name)}</div>
+                </div>
+                <div>
+                    <div class="appeal-field-label">Username</div>
+                    <div class="appeal-field-value">${username}</div>
+                </div>
+                <div>
+                    <div class="appeal-field-label">Telegram ID</div>
+                    <div class="appeal-field-value">${a.user_id}</div>
+                </div>
+                <div>
+                    <div class="appeal-field-label">Телефон</div>
+                    <div class="appeal-field-value">${escHtml(a.phone)}</div>
+                </div>
+                <div>
+                    <div class="appeal-field-label">Дата подачи</div>
+                    <div class="appeal-field-value">${date}</div>
+                </div>
+            </div>
+            ${msgBlock}
+            <div class="appeal-actions">
+                ${chatBtn}
+                ${actionBtns}
+            </div>
+        </div>`;
+    }).join('');
+    notifications.applyChatBadges();
+}
+
+function escHtml(str) {
+    if (!str) return '—';
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function approveAppeal(ticketId, userId) {
+    if (!confirm('Разблокировать пользователя и одобрить апелляцию?')) return;
+    try {
+        await api.request(`/api/appeals/${ticketId}/unblock`, { method: 'POST' });
+        utils.showAlert('✅ Пользователь разблокирован, апелляция закрыта', 'success');
+        loadAppeals();
+    } catch (err) {
+        utils.showAlert(err.message || 'Ошибка', 'error');
+    }
+}
+
+async function rejectAppeal(ticketId, userId) {
+    if (!confirm('Отклонить апелляцию? Пользователь останется заблокированным.')) return;
+    try {
+        await api.request(`/api/appeals/${ticketId}/reject`, { method: 'POST' });
+        utils.showAlert('Апелляция отклонена', 'success');
+        loadAppeals();
+    } catch (err) {
+        utils.showAlert(err.message || 'Ошибка', 'error');
+    }
+}
+
+loadAppeals();
+</script>
+{% endblock %}

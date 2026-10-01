@@ -1,0 +1,527 @@
+{% extends "base.html" %}
+
+{% block page_title %}Управление заданиями{% endblock %}
+
+{% block extra_css %}
+<style>
+.check-row {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+}
+.check-row .form-control { flex: 1; }
+
+.channel-status {
+    margin-top: 8px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    display: none;
+}
+.channel-status.ok {
+    display: block;
+    background: rgba(34,197,94,.12);
+    color: #4ade80;
+    border: 1px solid rgba(34,197,94,.25);
+}
+.channel-status.err {
+    display: block;
+    background: rgba(239,68,68,.1);
+    color: #f87171;
+    border: 1px solid rgba(239,68,68,.2);
+}
+.channel-status.checking {
+    display: block;
+    background: rgba(99,102,241,.1);
+    color: #a5b4fc;
+    border: 1px solid rgba(99,102,241,.2);
+}
+
+.btn-check {
+    padding: 9px 16px;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    transition: background .15s, border-color .15s;
+    flex-shrink: 0;
+}
+.btn-check:hover { border-color: var(--accent); color: var(--accent); }
+.btn-check:disabled { opacity: .5; cursor: not-allowed; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; flex-wrap: wrap; gap: 10px;">
+    <h2 style="color: var(--text-primary); font-size: 28px;">Задания</h2>
+    <div style="display:flex;gap:10px;">
+        <button onclick="deleteAllTasks()"
+                style="background:#ef4444;color:#fff;border:none;padding:9px 18px;
+                       border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;">
+            🗑 Удалить все
+        </button>
+        <button onclick="modal.show('addTaskModal')" class="btn btn-primary">➕ Добавить задание</button>
+    </div>
+</div>
+
+<div id="tasksList">
+    <p style="text-align: center; color: var(--text-muted); padding: 40px;">Загрузка...</p>
+</div>
+
+<!-- Modal добавления задания -->
+<div id="addTaskModal" class="modal-overlay">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Добавить задание</h3>
+        </div>
+        <form id="addTaskForm">
+
+            <!-- Канал + кнопка проверки -->
+            <div class="form-group">
+                <label>Канал</label>
+                <div class="check-row">
+                    <input type="text" name="channel_username" id="channelInput"
+                           placeholder="@channel или -1001234567890" required class="form-control"
+                           autocomplete="off">
+                    <button type="button" class="btn-check" id="checkBtn"
+                            onclick="checkChannel()">🔍 Проверить</button>
+                </div>
+                <div id="channelStatus" class="channel-status"></div>
+                <small style="color:var(--text-muted);font-size:12px;margin-top:4px;display:block;">
+                    Публичный: <code>@username</code> &nbsp;|&nbsp;
+                    Приватный: числовой ID <code>-1001234567890</code><br>
+                    💡 <b>Как получить ID приватного канала:</b> добавьте бота в канал как администратора —
+                    он <b>автоматически</b> пришлёт вам числовой ID. Или напишите <code>/id</code> прямо в канале.
+                </small>
+            </div>
+
+            <!-- Ссылка-приглашение (только для приватных) -->
+            <div class="form-group" id="inviteLinkGroup" style="display:none;">
+                <label>Ссылка-приглашение для пользователей
+                    <span style="color:var(--text-muted);font-weight:400;font-size:12px;">(обязательно для приватных каналов)</span>
+                </label>
+                <input type="text" name="channel_invite_link" id="inviteLinkInput"
+                       placeholder="https://t.me/+XXXXX" class="form-control">
+                <small style="color:var(--text-muted);font-size:12px;margin-top:4px;display:block;">
+                    Эта ссылка будет показана пользователям при выполнении задания
+                </small>
+            </div>
+
+            <div class="form-group">
+                <label>Награда за 1 подписчика ($)</label>
+                <input type="number" step="0.01" name="reward_per_user"
+                       placeholder="0.50" required class="form-control">
+                <small style="color:var(--text-muted);">Сколько получит один пользователь за подписку</small>
+            </div>
+
+            <div class="form-group">
+                <label>Нужно подписчиков</label>
+                <input type="number" name="required_subscribers"
+                       placeholder="100" required class="form-control">
+                <small id="budgetHint" style="color:var(--text-muted);">Общий бюджет задания: —</small>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-top: 25px;">
+                <button type="submit" id="createBtn" class="btn btn-primary"
+                        style="flex: 1;" disabled>Создать</button>
+                <button type="button" onclick="resetAndClose()"
+                        class="btn" style="flex:1;background:var(--bg-tertiary);color:var(--text-primary);">
+                    Отмена
+                </button>
+            </div>
+
+            <p id="createHint" style="color:var(--text-muted);font-size:12px;text-align:center;margin-top:10px;">
+                Сначала проверьте канал кнопкой «🔍 Проверить»
+            </p>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: кто выполнил задание -->
+<div id="taskCompletionsModal" class="modal-overlay">
+    <div class="modal-content" style="max-width:700px;">
+        <div class="modal-header">
+            <h3 id="completionsModalTitle">Кто выполнил задание</h3>
+        </div>
+        <div id="completionsModalBody" style="max-height:60vh;overflow-y:auto;">
+            <p style="color:var(--text-muted);">Загрузка...</p>
+        </div>
+        <div style="margin-top:20px;">
+            <button type="button" onclick="modal.hide('taskCompletionsModal')"
+                    class="btn" style="width:100%;background:var(--bg-tertiary);color:var(--text-primary);">
+                Закрыть
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // ── Состояние проверки канала ────────────────────────────────
+    let channelVerified = false;
+    let channelIsPrivate = false;
+
+    const channelInput    = document.getElementById('channelInput');
+    const statusBox       = document.getElementById('channelStatus');
+    const createBtn       = document.getElementById('createBtn');
+    const createHint      = document.getElementById('createHint');
+    const checkBtn        = document.getElementById('checkBtn');
+    const inviteLinkGroup = document.getElementById('inviteLinkGroup');
+    const inviteLinkInput = document.getElementById('inviteLinkInput');
+
+    // Сброс проверки при изменении поля
+    channelInput.addEventListener('input', () => {
+        channelVerified = false;
+        channelIsPrivate = false;
+        createBtn.disabled = true;
+        createHint.style.display = 'block';
+        statusBox.className = 'channel-status';
+        statusBox.textContent = '';
+        inviteLinkGroup.style.display = 'none';
+    });
+
+    async function checkChannel() {
+        const ch = channelInput.value.trim();
+        if (!ch) {
+            utils.showAlert('Введите username или ID канала', 'error');
+            return;
+        }
+
+        statusBox.className = 'channel-status checking';
+        statusBox.innerHTML = '⏳ Проверяю...';
+        checkBtn.disabled = true;
+        channelVerified = false;
+        createBtn.disabled = true;
+
+        try {
+            const data = await api.request(
+                `/api/tasks/check-channel?channel=${encodeURIComponent(ch)}`
+            );
+
+            if (data.ok) {
+                const statusLabel = (data.status === 'administrator' || data.status === 'creator')
+                    ? '👑 Администратор'
+                    : '✅ Участник';
+                statusBox.className = 'channel-status ok';
+                statusBox.textContent =
+                    `✅ Бот @${data.bot_username} в канале «${data.chat_title}» (${statusLabel}). Можно создать задание.`;
+                channelVerified = true;
+                channelIsPrivate = !!data.is_private;
+                // Сохраняем название канала для отправки на сервер
+                window._verifiedChatTitle = data.chat_title || '';
+                createBtn.disabled = false;
+                createHint.style.display = 'none';
+
+                // Для приватных каналов показываем поле invite-ссылки
+                inviteLinkGroup.style.display = channelIsPrivate ? 'block' : 'none';
+                if (!channelIsPrivate) inviteLinkInput.value = '';
+
+            } else {
+                statusBox.className = 'channel-status err';
+                // Многострочный текст (переносы)
+                statusBox.innerHTML = '❌ ' + data.error.replace(/\n/g, '<br>');
+                inviteLinkGroup.style.display = 'none';
+            }
+        } catch (err) {
+            statusBox.className = 'channel-status err';
+            statusBox.textContent = '❌ ' + (err.message || 'Ошибка проверки');
+        } finally {
+            checkBtn.disabled = false;
+        }
+    }
+
+    // Enter в поле → проверить
+    channelInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); checkChannel(); }
+    });
+
+    // ── Бюджет-подсказка ─────────────────────────────────────────
+    const form = document.getElementById('addTaskForm');
+    function updateBudgetHint() {
+        const perUser = parseFloat(form.reward_per_user.value) || 0;
+        const subs    = parseInt(form.required_subscribers.value) || 0;
+        const hint    = document.getElementById('budgetHint');
+        if (perUser > 0 && subs > 0) {
+            hint.textContent    = `Общий бюджет задания: $${(perUser * subs).toFixed(2)}`;
+            hint.style.color    = 'var(--success)';
+        } else {
+            hint.textContent    = 'Общий бюджет задания: —';
+            hint.style.color    = 'var(--text-muted)';
+        }
+    }
+    form.reward_per_user.addEventListener('input', updateBudgetHint);
+    form.required_subscribers.addEventListener('input', updateBudgetHint);
+
+    // ── Создать задание ──────────────────────────────────────────
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        if (!channelVerified) {
+            utils.showAlert('Сначала проверьте канал', 'error');
+            return;
+        }
+
+        const perUser  = parseFloat(form.reward_per_user.value);
+        const subs     = parseInt(form.required_subscribers.value);
+        const submitBtn = e.target.querySelector('button[type="submit"]');
+
+        // Валидация: для приватных каналов invite-ссылка обязательна
+        if (channelIsPrivate && !inviteLinkInput.value.trim()) {
+            utils.showAlert('Для приватного канала укажите ссылку-приглашение', 'error');
+            return;
+        }
+
+        const fd = new FormData();
+        fd.append('channel_username',     form.channel_username.value.trim());
+        fd.append('reward_per_user',      perUser);
+        fd.append('required_subscribers', subs);
+        if (inviteLinkInput.value.trim()) {
+            fd.append('channel_invite_link', inviteLinkInput.value.trim());
+        }
+        if (window._verifiedChatTitle) {
+            fd.append('channel_title', window._verifiedChatTitle);
+        }
+
+        utils.showLoading(submitBtn);
+        try {
+            await api.request('/api/tasks', { method: 'POST', body: fd });
+            modal.hide('addTaskModal');
+            resetForm();
+            utils.showAlert('Задание успешно создано!', 'success');
+            loadTasks();
+        } catch (error) {
+            utils.showAlert(error.message || 'Ошибка создания задания', 'error');
+        } finally {
+            utils.hideLoading(submitBtn, 'Создать');
+        }
+    });
+
+    function resetForm() {
+        form.reset();
+        channelVerified = false;
+        channelIsPrivate = false;
+        window._verifiedChatTitle = '';
+        createBtn.disabled = true;
+        createHint.style.display = 'block';
+        statusBox.className = 'channel-status';
+        statusBox.textContent = '';
+        inviteLinkGroup.style.display = 'none';
+        inviteLinkInput.value = '';
+        updateBudgetHint();
+    }
+
+    function resetAndClose() {
+        resetForm();
+        modal.hide('addTaskModal');
+    }
+
+    // ── Отображение канала ────────────────────────────────────────
+    function buildChannelLink(task) {
+        const title = task.channel_title || task.channel_username;
+        const isPrivate = /^-?\d+$/.test(String(task.channel_username));
+
+        if (isPrivate) {
+            // Приватный канал — ссылка на invite (если есть), иначе просто название
+            return `<span style="color:var(--text-primary);">🔒 ${escHtml(title)}</span>`;
+        }
+        // channel_username может быть введён рекламодателем (через заявку на рекламу) —
+        // считаем его недоверенным и экранируем перед вставкой в href-атрибут.
+        return `<a href="https://t.me/${escHtml(task.channel_username)}" target="_blank"
+                   style="color:inherit;text-decoration:none;">${escHtml(title)}</a>`;
+    }
+
+    function escHtml(s) {
+        return String(s).replace(/[&<>"']/g, c =>
+            ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    // ── Отображение владельца задания (рекламодатель из заявки, либо
+    // администратор, если задание создано напрямую в панели) ──────
+    function buildOwnerLine(task) {
+        const owner = task.owner;
+        if (!owner) {
+            return '<span style="color:var(--text-muted);">— (создано вручную)</span>';
+        }
+        const label = owner.name
+            ? escHtml(owner.name) + (owner.username ? ` (@${escHtml(owner.username)})` : ` (ID ${owner.user_id})`)
+            : (owner.username ? '@' + escHtml(owner.username) : `ID ${owner.user_id}`);
+        return `<a href="/admin/chat/${owner.user_id}" style="color:var(--text-primary);text-decoration:underline;" title="Открыть чат с владельцем">${label}</a>`;
+    }
+
+    // ── Список заданий ───────────────────────────────────────────
+    let tasksCache = [];
+
+    async function loadTasks() {
+        try {
+            const data = await api.request('/api/tasks');
+            tasksCache = data.tasks || [];
+            const tasksList = document.getElementById('tasksList');
+
+            if (data.tasks && data.tasks.length > 0) {
+                tasksList.innerHTML = data.tasks.map(task => `
+                    <div style="background:var(--bg-tertiary);padding:25px;border-radius:12px;
+                                margin-bottom:15px;border:1px solid var(--border-color);
+                                border-left:4px solid var(--accent-primary);">
+                        <div style="display:flex;justify-content:space-between;align-items:start;gap:16px;">
+                            <div style="flex:1;">
+                                <h3 style="color:var(--text-primary);margin-bottom:15px;font-size:20px;">
+                                    📢 ${buildChannelLink(task)}
+                                </h3>
+                                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:15px;">
+                                    <div>
+                                        <div style="color:var(--text-secondary);font-size:12px;margin-bottom:5px;">💰 За 1 подписку</div>
+                                        <div style="color:var(--success);font-weight:700;font-size:20px;">
+                                            ${utils.formatCurrency(task.reward_amount / Math.max(task.required_subscribers, 1))}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div style="color:var(--text-secondary);font-size:12px;margin-bottom:5px;">💵 Общий бюджет</div>
+                                        <div style="color:var(--accent-primary);font-weight:600;">
+                                            ${utils.formatCurrency(task.reward_amount)}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div style="color:var(--text-secondary);font-size:12px;margin-bottom:5px;">🎯 Нужно</div>
+                                        <div style="color:var(--text-primary);font-weight:600;">${task.required_subscribers}</div>
+                                    </div>
+                                    <div>
+                                        <div style="color:var(--text-secondary);font-size:12px;margin-bottom:5px;">✅ Выполнили</div>
+                                        <div style="color:var(--text-primary);font-weight:600;">
+                                            ${task.current_subscribers} / ${task.required_subscribers}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div style="color:var(--text-secondary);font-size:12px;margin-bottom:5px;">👤 Владелец</div>
+                                        <div style="font-weight:600;">
+                                            ${buildOwnerLine(task)}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:10px;flex-shrink:0;">
+                                <span style="padding:6px 14px;
+                                             background:${task.is_active ? 'var(--success)' : 'var(--text-muted)'};
+                                             color:#fff;border-radius:20px;font-size:12px;font-weight:600;">
+                                    ${task.is_active ? 'Активно' : 'Завершено'}
+                                </span>
+                                <button onclick="showCompletions(${task.task_id})"
+                                    style="background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border-color);padding:7px 14px;
+                                           border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;">
+                                    👥 Кто выполнил
+                                </button>
+                                <button onclick="deleteTaskById(${task.task_id})"
+                                    style="background:var(--error);color:#fff;border:none;padding:7px 14px;
+                                           border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;">
+                                    🗑 Удалить
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                tasksList.innerHTML =
+                    '<p style="text-align:center;color:var(--text-muted);padding:40px;">Нет заданий</p>';
+            }
+        } catch (error) {
+            console.error('Ошибка загрузки заданий:', error);
+            document.getElementById('tasksList').innerHTML =
+                '<div class="alert alert-error">Ошибка загрузки</div>';
+        }
+    }
+
+    async function deleteAllTasks() {
+        if (!confirm('Остановить ВСЕ активные задания?\n\nОни переместятся в «Историю заданий» (данные о выполнениях сохранятся), рекламодателям вернётся неизрасходованный остаток бюджета.'))
+            return;
+        try {
+            await api.request('/api/tasks/delete-all', { method: 'POST' });
+            utils.showAlert('Все активные задания остановлены и перенесены в историю', 'success');
+            loadTasks();
+        } catch (err) {
+            utils.showAlert(err.message || 'Ошибка', 'error');
+        }
+    }
+
+    function deleteTaskById(taskId) {
+        const task = tasksCache.find(t => t.task_id === taskId);
+        const name = task ? `@${task.channel_username}` : taskId;
+        return deleteTask(taskId, name);
+    }
+
+    async function deleteTask(taskId, channelName) {
+        if (!confirm(`Остановить задание ${channelName}?\n\nОно переместится в «Историю заданий» (данные о выполнениях сохранятся), рекламодателю вернётся неизрасходованный остаток бюджета.`))
+            return;
+        try {
+            await api.request(`/api/tasks/${taskId}/delete`, { method: 'POST' });
+            utils.showAlert('Задание остановлено и перенесено в историю', 'success');
+            loadTasks();
+        } catch (err) {
+            utils.showAlert(err.message || 'Ошибка удаления', 'err');
+        }
+    }
+
+    // ── Кто выполнил задание ──────────────────────────────────────
+    async function showCompletions(taskId) {
+        const task = tasksCache.find(t => t.task_id === taskId);
+        document.getElementById('completionsModalTitle').textContent =
+            `Кто выполнил: ${task ? '@' + task.channel_username : 'Задание #' + taskId}`;
+        const body = document.getElementById('completionsModalBody');
+        body.innerHTML = '<p style="color:var(--text-muted);">Загрузка...</p>';
+        modal.show('taskCompletionsModal');
+
+        try {
+            const data = await api.request(`/api/tasks/${taskId}/completions`);
+            const rows = data.completions || [];
+
+            if (rows.length === 0) {
+                body.innerHTML = '<p style="color:var(--text-muted);padding:10px 0;">Пока никто не выполнил это задание.</p>';
+                return;
+            }
+
+            const statusLabel = (c) => {
+                if (c.verification_failed) return '<span style="color:var(--error);">❌ Не прошёл проверку</span>';
+                if (c.is_verified) return '<span style="color:var(--success);">✅ Верифицировано</span>';
+                return '<span style="color:var(--warning);">⏳ Ожидает верификации</span>';
+            };
+
+            body.innerHTML = `
+                <div style="overflow-x:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                    <thead>
+                        <tr style="text-align:left;color:var(--text-secondary);border-bottom:1px solid var(--border-color);">
+                            <th style="padding:8px;">Пользователь</th>
+                            <th style="padding:8px;">ID</th>
+                            <th style="padding:8px;">Выполнено</th>
+                            <th style="padding:8px;">Верифицировано</th>
+                            <th style="padding:8px;">Статус</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows.map(c => `
+                            <tr style="border-bottom:1px solid var(--border-color);">
+                                <td style="padding:8px;color:var(--text-primary);">
+                                    ${escHtml(c.first_name || '—')} ${c.username ? `(@${escHtml(c.username)})` : ''}
+                                </td>
+                                <td style="padding:8px;color:var(--text-muted);">${c.user_id}</td>
+                                <td style="padding:8px;color:var(--text-muted);">${c.completed_at ? utils.formatDate(c.completed_at) : '—'}</td>
+                                <td style="padding:8px;color:var(--text-muted);">${c.verified_at ? utils.formatDate(c.verified_at) : '—'}</td>
+                                <td style="padding:8px;">${statusLabel(c)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+                </div>
+            `;
+        } catch (error) {
+            body.innerHTML = '<div class="alert alert-error">Ошибка загрузки списка выполнивших</div>';
+        }
+    }
+
+    loadTasks();
+</script>
+{% endblock %}

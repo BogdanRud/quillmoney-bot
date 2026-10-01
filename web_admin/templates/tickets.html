@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block page_title %}Тикеты поддержки{% endblock %}
+
+{% block content %}
+<h2 style="color: var(--text-primary); margin-bottom: 20px; font-size: 28px;">🆘 Тикеты поддержки</h2>
+
+<p style="color: var(--text-secondary); margin-bottom: 20px;">
+    Пользователи создают обращения в боте. Ответьте через «Чат» — сообщение придёт в Telegram.
+</p>
+
+<div style="margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
+    <button onclick="loadTickets('')" class="btn filter-btn" data-status="">Все</button>
+    <button onclick="loadTickets('open')" class="btn filter-btn" data-status="open">Открытые</button>
+    <button onclick="loadTickets('taken')" class="btn filter-btn" data-status="taken">В работе</button>
+</div>
+
+<div id="ticketsList">
+    <p style="text-align: center; color: var(--text-muted); padding: 40px;">Загрузка...</p>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const statusLabels = { open: 'Открыт', taken: 'В работе', closed: 'Закрыт' };
+    let currentTicketStatus = 'open';
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function setActiveFilterButton(status) {
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            if (btn.dataset.status === status) {
+                btn.classList.add('btn-primary');
+                btn.style.background = '';
+                btn.style.color = '';
+            } else {
+                btn.classList.remove('btn-primary');
+                btn.style.background = 'var(--bg-tertiary)';
+                btn.style.color = 'var(--text-primary)';
+            }
+        });
+    }
+
+    async function loadTickets(status) {
+        currentTicketStatus = status;
+        setActiveFilterButton(status);
+        const url = status ? `/api/tickets?status=${status}` : '/api/tickets';
+        try {
+            const data = await api.request(url);
+            const list = document.getElementById('ticketsList');
+
+            if (!data.tickets || data.tickets.length === 0) {
+                list.innerHTML = '<p style="text-align: center; color: var(--text-muted); padding: 40px;">Нет обращений</p>';
+                return;
+            }
+
+            list.innerHTML = data.tickets.map(t => {
+                const date = t.created_at ? utils.formatDate(t.created_at) : '';
+                const st = statusLabels[t.status] || t.status;
+                return `
+                    <div style="background: var(--bg-tertiary); padding: 22px; border-radius: 12px; margin-bottom: 15px; border-left: 4px solid var(--accent-primary); overflow: hidden;">
+                        <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 15px;">
+                            <div style="flex: 1; min-width: 0; max-width: 100%; overflow: hidden;">
+                                <h3 style="margin-bottom: 8px; word-break: break-word;">#${t.ticket_id} — ${escapeHtml(t.reason)}</h3>
+                                <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 10px;">
+                                    ${escapeHtml(t.user_name)} (${escapeHtml(t.username)}) · ID ${t.user_id} · ${date}
+                                </p>
+                                <p style="white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; max-width: 100%; background: var(--bg-secondary); padding: 12px; border-radius: 8px;">${escapeHtml(t.description)}</p>
+                                <span style="display: inline-block; margin-top: 10px; padding: 4px 12px; border-radius: 12px; font-size: 12px; background: var(--bg-secondary);">${st}</span>
+                            </div>
+                            <div style="display: flex; flex-direction: column; gap: 8px; min-width: 140px;">
+                                ${t.status === 'open' ? `<button onclick="takeTicket(${t.ticket_id})" class="btn btn-success">Взять в работу</button>` : ''}
+                                <a href="/admin/chat/${t.user_id}" class="btn btn-primary">💬 Ответить в чате<span class="notif-badge notif-badge-inline" data-chat-badge="${t.user_id}" style="display:none;"></span></a>
+                                ${t.status !== 'closed' ? `<button onclick="closeTicket(${t.ticket_id})" class="btn" style="background: var(--text-muted); color: white;">Закрыть</button>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            notifications.applyChatBadges();
+        } catch (e) {
+            document.getElementById('ticketsList').innerHTML = '<div class="alert alert-error">Ошибка загрузки</div>';
+        }
+    }
+
+    async function takeTicket(id) {
+        try {
+            const res = await api.request(`/api/tickets/${id}/take`, { method: 'POST' });
+            utils.showAlert('Тикет принят. Откройте чат для ответа.', 'success');
+            loadTickets(currentTicketStatus);
+        } catch (e) {
+            utils.showAlert(e.message || 'Ошибка', 'error');
+        }
+    }
+
+    async function closeTicket(id) {
+        if (!confirm('Закрыть обращение?')) return;
+        try {
+            await api.request(`/api/tickets/${id}/close`, { method: 'POST' });
+            utils.showAlert('Тикет закрыт', 'success');
+            loadTickets(currentTicketStatus);
+        } catch (e) {
+            utils.showAlert(e.message || 'Ошибка', 'error');
+        }
+    }
+
+    loadTickets('open');
+</script>
+{% endblock %}

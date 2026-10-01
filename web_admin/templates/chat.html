@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block page_title %}Переписка с {{ target_user.first_name or target_user.username or target_user.user_id }}{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid var(--border-color);">
+    <div>
+        <h2 style="color: var(--text-primary); margin-bottom: 5px; font-size: 24px;">💬 Переписка</h2>
+        <p style="color: var(--text-secondary); font-size: 14px;">
+            Пользователь: {{ target_user.first_name or 'Без имени' }}
+            {% if target_user.username %}(@{{ target_user.username }}){% endif %}
+            <br>
+            ID: {{ target_user.user_id }} | Телефон: {{ target_user.phone or 'Нет' }} | Язык в боте: <b>{{ target_user_lang_label }}</b>
+        </p>
+    </div>
+    <button type="button" onclick="if (document.referrer && document.referrer.includes(location.host)) { history.back(); } else { location.href = '/admin/users'; }"
+            class="btn" style="background: var(--bg-tertiary); color: var(--text-primary);">← Назад</button>
+</div>
+
+<div id="chatPage" data-user-id="{{ target_user.user_id }}" hidden></div>
+
+<div id="messagesContainer" style="height: 500px; overflow-y: auto; background: var(--bg-tertiary); padding: 25px; border-radius: 12px; margin-bottom: 20px; border: 1px solid var(--border-color);">
+    <div id="messagesList">
+        <p style="text-align: center; color: var(--text-muted); padding: 40px;">Загрузка сообщений...</p>
+    </div>
+</div>
+
+<div style="display: flex; gap: 10px;">
+    <input
+        type="text"
+        id="messageInput"
+        placeholder="Введите сообщение..."
+        class="form-control"
+        onkeypress="if(event.key === 'Enter') sendMessage()"
+    >
+    <button id="sendButton" onclick="sendMessage()" class="btn btn-primary">Отправить</button>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const userId = Number(document.getElementById('chatPage').dataset.userId);
+    let messagesInterval;
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    async function loadMessages() {
+        try {
+            const data = await api.request(`/api/chat/${userId}/messages`);
+            const messagesList = document.getElementById('messagesList');
+            const container = document.getElementById('messagesContainer');
+
+            // Автопрокрутка вниз — только если пользователь и так уже был внизу
+            // (или это первая загрузка). Иначе автообновление каждые 3 сек
+            // выдёргивало бы его обратно вниз при чтении старых сообщений.
+            const wasNearBottom = container.scrollHeight === 0
+                || container.scrollHeight - container.scrollTop - container.clientHeight < 80;
+
+            if (data.messages && data.messages.length > 0) {
+                messagesList.innerHTML = data.messages.map(msg => {
+                    const date = msg.created_at ? utils.formatDate(msg.created_at) : '';
+                    const isAdmin = msg.is_from_admin;
+
+                    let attachmentHtml = '';
+                    if (msg.file_id && msg.file_type === 'photo') {
+                        attachmentHtml = `<img src="/api/chat/file/${msg.message_id}" style="max-width: 280px; max-height: 280px; border-radius: 8px; display: block; margin-bottom: ${msg.text ? '8px' : '0'};" loading="lazy">`;
+                    } else if (msg.file_id) {
+                        attachmentHtml = `<a href="/api/chat/file/${msg.message_id}" target="_blank" style="display: block; margin-bottom: ${msg.text ? '8px' : '0'}; color: inherit; text-decoration: underline;">📎 ${escapeHtml(msg.text) || 'Файл'}</a>`;
+                    }
+                    // Если это файл-документ, текст уже показан как подпись ссылки — не дублируем ниже
+                    const textHtml = (msg.text && !(msg.file_id && msg.file_type !== 'photo'))
+                        ? `<div style="margin-bottom: 5px; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;">${escapeHtml(msg.text)}</div>`
+                        : '';
+
+                    return `
+                        <div style="margin-bottom: 15px; display: flex; ${isAdmin ? 'justify-content: flex-end' : 'justify-content: flex-start'}">
+                            <div style="max-width: 70%; background: ${isAdmin ? 'var(--accent-primary)' : 'var(--bg-secondary)'}; color: ${isAdmin ? 'white' : 'var(--text-primary)'}; padding: 12px 16px; border-radius: 12px; box-shadow: 0 2px 5px var(--shadow);">
+                                ${attachmentHtml}
+                                ${textHtml}
+                                <div style="font-size: 11px; opacity: 0.7;">${date}</div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                if (wasNearBottom) {
+                    container.scrollTop = container.scrollHeight;
+                }
+            } else {
+                messagesList.innerHTML = '<p style="text-align: center; color: var(--text-muted); padding: 40px;">Нет сообщений</p>';
+            }
+        } catch (error) {
+            console.error('Ошибка загрузки сообщений:', error);
+        }
+    }
+    
+    let isSending = false;
+
+    async function sendMessage() {
+        // Защита от двойной отправки — например, если два раза быстро нажать
+        // Enter до того, как первый запрос успеет завершиться и очистить поле.
+        if (isSending) return;
+
+        const input = document.getElementById('messageInput');
+        const button = document.getElementById('sendButton');
+        const messageText = input.value.trim();
+
+        if (!messageText) return;
+
+        isSending = true;
+        input.disabled = true;
+        utils.showLoading(button);
+
+        const formData = new FormData();
+        formData.append('message_text', messageText);
+
+        try {
+            await api.request(`/api/chat/${userId}/send`, {
+                method: 'POST',
+                body: formData
+            });
+
+            input.value = '';
+            loadMessages();
+        } catch (error) {
+            utils.showAlert(error.message || 'Ошибка отправки сообщения', 'error');
+        } finally {
+            isSending = false;
+            input.disabled = false;
+            utils.hideLoading(button, 'Отправить');
+            input.focus();
+        }
+    }
+    
+    loadMessages();
+    messagesInterval = setInterval(loadMessages, 3000);
+    
+    window.addEventListener('beforeunload', () => {
+        clearInterval(messagesInterval);
+    });
+</script>
+{% endblock %}

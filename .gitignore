@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+bot_database.db
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+bot_log.txt
+bot_err.txt
+webadmin_log.txt
+webadmin_err.txt
+nohup.out
+screenlog.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+

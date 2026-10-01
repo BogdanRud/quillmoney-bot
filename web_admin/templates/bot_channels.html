@@ -1,0 +1,536 @@
+{% extends "base.html" %}
+
+{% block page_title %}Каналы бота{% endblock %}
+
+{% block extra_css %}
+<style>
+.tab-bar {
+    display: flex;
+    gap: 4px;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    padding: 4px;
+    margin-bottom: 20px;
+    border: 1px solid var(--border-color);
+}
+.tab-btn {
+    flex: 1;
+    padding: 10px 16px;
+    border: none;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+.tab-btn:hover { color: var(--text-primary); background: rgba(255,255,255,.04); }
+.tab-btn.active {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    box-shadow: 0 1px 4px rgba(0,0,0,.15);
+}
+.tab-btn .count {
+    font-size: 11px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    background: rgba(255,255,255,.08);
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+.tab-btn.active .count {
+    background: var(--primary);
+    color: #fff;
+}
+
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ── Таблица лога ─────────────────────────────────────── */
+.event-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+.event-table th {
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    text-align: left;
+    padding: 10px 14px;
+    font-weight: 600;
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+}
+.event-table td {
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-primary);
+    vertical-align: middle;
+}
+.event-table tr:last-child td { border-bottom: none; }
+.event-table tr:hover td { background: rgba(255,255,255,.03); }
+
+/* ── Бейджи ────────────────────────────────────────────── */
+.badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.badge-added   { background: rgba(34,197,94,.15);  color: #4ade80; }
+.badge-removed { background: rgba(239,68,68,.15);  color: #f87171; }
+.badge-admin   { background: rgba(251,191,36,.15); color: #fbbf24; }
+.badge-member  { background: rgba(99,102,241,.15); color: #818cf8; }
+
+.chat-type {
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+}
+.chat-id-copy {
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    transition: color .15s, border-color .15s;
+    user-select: all;
+}
+.chat-id-copy:hover { color: var(--accent); border-color: var(--accent); }
+
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-secondary);
+    font-size: 15px;
+}
+.empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+
+/* ── Карточки активных каналов ────────────────────────── */
+.active-channels-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 14px;
+}
+.active-channel-card {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: border-color .2s;
+}
+.active-channel-card:hover { border-color: var(--primary); }
+.active-channel-card .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+.active-channel-card .card-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.active-channel-card .card-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.active-channel-card .card-id {
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    user-select: all;
+    transition: color .15s, border-color .15s;
+}
+.active-channel-card .card-id:hover { color: var(--primary); border-color: var(--primary); }
+.active-channel-card .card-date {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: auto;
+}
+.leave-btn {
+    padding: 6px 14px;
+    border: 1px solid rgba(239,68,68,.3);
+    border-radius: 8px;
+    background: rgba(239,68,68,.08);
+    color: #f87171;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .2s;
+    white-space: nowrap;
+}
+.leave-btn:hover {
+    background: rgba(239,68,68,.2);
+    border-color: rgba(239,68,68,.5);
+}
+.leave-btn:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+}
+.active-channel-card { cursor: pointer; }
+
+.detail-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 13px;
+}
+.detail-row:last-child { border-bottom: none; }
+.detail-row .label { color: var(--text-secondary); flex-shrink: 0; }
+.detail-row .value { color: var(--text-primary); text-align: right; word-break: break-word; }
+.admin-chip {
+    display: inline-block;
+    padding: 3px 10px;
+    margin: 2px;
+    border-radius: 20px;
+    font-size: 12px;
+    background: rgba(99,102,241,.12);
+    color: #818cf8;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+    <h2 style="color:var(--text-primary);font-size:28px;margin:0;">📡 Каналы бота</h2>
+    <button class="btn" onclick="loadAll()"
+            style="background:var(--bg-tertiary);color:var(--text-primary);border:1px solid var(--border-color);
+                   padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;">
+        🔄 Обновить
+    </button>
+</div>
+
+<div style="background:var(--bg-tertiary);padding:14px 20px;border-radius:12px;
+            border:1px solid var(--border-color);margin-bottom:20px;font-size:13px;
+            color:var(--text-secondary);line-height:1.7;">
+    <b>Лог</b> — история всех событий: добавление и удаление бота из каналов и групп.<br>
+    <b>Активные</b> — каналы, в которых бот находится прямо сейчас.
+    Нажмите на <code>chat_id</code> чтобы скопировать.
+</div>
+
+<!-- Табы -->
+<div class="tab-bar">
+    <button class="tab-btn active" data-tab="log" onclick="switchTab('log')">
+        📋 Лог <span class="count" id="logCount">0</span>
+    </button>
+    <button class="tab-btn" data-tab="active" onclick="switchTab('active')">
+        🟢 Активные <span class="count" id="activeCount">0</span>
+    </button>
+</div>
+
+<!-- Панель: Лог -->
+<div class="tab-panel active" id="panel-log">
+    <div style="background:var(--bg-tertiary);border-radius:16px;border:1px solid var(--border-color);overflow:hidden;">
+        <div id="logContainer">
+            <div class="empty-state">
+                <div class="icon">⏳</div>
+                Загрузка...
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Панель: Активные каналы -->
+<div class="tab-panel" id="panel-active">
+    <div id="activeContainer">
+        <div class="empty-state">
+            <div class="icon">⏳</div>
+            Загрузка...
+        </div>
+    </div>
+</div>
+
+<!-- Modal: подробная информация о канале/группе -->
+<div id="channelDetailsModal" class="modal-overlay">
+    <div class="modal-content" style="max-width:600px;">
+        <div class="modal-header">
+            <h3 id="channelDetailsTitle">Информация о канале</h3>
+        </div>
+        <div id="channelDetailsBody" style="max-height:65vh;overflow-y:auto;">
+            <p style="color:var(--text-muted);">Загрузка...</p>
+        </div>
+        <div style="margin-top:20px;">
+            <button type="button" onclick="modal.hide('channelDetailsModal')"
+                    class="btn" style="width:100%;background:var(--bg-tertiary);color:var(--text-primary);">
+                Закрыть
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function switchTab(tab) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + tab));
+}
+
+async function loadAll() {
+    await Promise.all([loadEvents(), loadActive()]);
+}
+
+async function loadEvents() {
+    try {
+        const data = await api.request('/api/bot-channels/events');
+        const container = document.getElementById('logContainer');
+        document.getElementById('logCount').textContent = data.events ? data.events.length : 0;
+
+        if (!data.events || data.events.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="icon">📋</div>
+                    Событий пока нет.<br>
+                    <span style="font-size:13px;">Добавьте бота в канал — событие появится здесь.</span>
+                </div>`;
+            return;
+        }
+
+        const rows = data.events.map((ev, i) => {
+            const eventBadge = ev.event_type === 'added'
+                ? `<span class="badge badge-added">✅ Добавлен</span>`
+                : `<span class="badge badge-removed">❌ Удалён</span>`;
+
+            const statusBadge = ev.bot_status === 'administrator' || ev.bot_status === 'creator'
+                ? `<span class="badge badge-admin">👑 Администратор</span>`
+                : ev.event_type === 'added'
+                    ? `<span class="badge badge-member">👤 Участник</span>`
+                    : '';
+
+            const chatType = {
+                channel: 'Канал',
+                supergroup: 'Супергруппа',
+                group: 'Группа',
+            }[ev.chat_type] || ev.chat_type;
+
+            const dt = ev.created_at ? ev.created_at.slice(0, 16).replace('T', ' ') : '—';
+
+            return `
+                <tr style="cursor:pointer;" onclick="showChannelDetails(${ev.chat_id})">
+                    <td>${i + 1}</td>
+                    <td>
+                        <div style="font-weight:600;" title="${esc(ev.chat_title)}">${esc(ev.chat_title)}</div>
+                        <div class="chat-type">${chatType}</div>
+                    </td>
+                    <td>
+                        <span class="chat-id-copy" onclick="event.stopPropagation(); copyId('${ev.chat_id}', this)"
+                              title="Нажмите чтобы скопировать">
+                            ${ev.chat_id}
+                        </span>
+                    </td>
+                    <td>${eventBadge}</td>
+                    <td>${statusBadge}</td>
+                    <td style="color:var(--text-secondary);font-size:13px;white-space:nowrap;">${dt}</td>
+                </tr>`;
+        }).join('');
+
+        container.innerHTML = `
+            <table class="event-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Канал / Группа</th>
+                        <th>Chat ID</th>
+                        <th>Событие</th>
+                        <th>Роль бота</th>
+                        <th>Дата</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>`;
+
+    } catch (err) {
+        document.getElementById('logContainer').innerHTML =
+            `<div class="empty-state"><div class="icon">❌</div>Ошибка загрузки: ${err.message}</div>`;
+    }
+}
+
+let activeChannelsCache = [];
+
+async function loadActive() {
+    try {
+        const data = await api.request('/api/bot-channels/active');
+        activeChannelsCache = data.channels || [];
+        const container = document.getElementById('activeContainer');
+        document.getElementById('activeCount').textContent = data.channels ? data.channels.length : 0;
+
+        if (!data.channels || data.channels.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="icon">📡</div>
+                    Бот ни в одном канале не состоит.<br>
+                    <span style="font-size:13px;">Добавьте бота в канал или группу — он появится здесь.</span>
+                </div>`;
+            return;
+        }
+
+        const cards = data.channels.map(ch => {
+            const chatType = {
+                channel: 'Канал',
+                supergroup: 'Супергруппа',
+                group: 'Группа',
+            }[ch.chat_type] || ch.chat_type;
+
+            const statusBadge = ch.bot_status === 'administrator' || ch.bot_status === 'creator'
+                ? `<span class="badge badge-admin">👑 Администратор</span>`
+                : `<span class="badge badge-member">👤 Участник</span>`;
+
+            const dt = ch.last_event ? ch.last_event.slice(0, 16).replace('T', ' ') : '—';
+
+            return `
+                <div class="active-channel-card" id="ch-${ch.chat_id}" onclick="showChannelDetails(${ch.chat_id})">
+                    <div class="card-header">
+                        <div class="card-title" title="${esc(ch.chat_title)}">${esc(ch.chat_title)}</div>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            ${statusBadge}
+                            <button class="leave-btn" onclick="event.stopPropagation(); leaveChannelById(${ch.chat_id}, this)" title="Бот покинет этот чат">
+                                🚪 Выйти
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-meta">
+                        <span class="chat-type">${chatType}</span>
+                        <span class="card-id" onclick="event.stopPropagation(); copyId('${ch.chat_id}', this)"
+                              title="Нажмите чтобы скопировать">
+                            ${ch.chat_id}
+                        </span>
+                    </div>
+                    <div class="card-date">Добавлен: ${dt}</div>
+                </div>`;
+        }).join('');
+
+        container.innerHTML = `<div class="active-channels-grid">${cards}</div>`;
+
+    } catch (err) {
+        document.getElementById('activeContainer').innerHTML =
+            `<div class="empty-state"><div class="icon">❌</div>Ошибка загрузки: ${err.message}</div>`;
+    }
+}
+
+async function copyId(chatId, el) {
+    try {
+        await navigator.clipboard.writeText(chatId);
+        const orig = el.textContent;
+        el.textContent = '✅ Скопировано';
+        el.style.color = '#4ade80';
+        setTimeout(() => {
+            el.textContent = orig;
+            el.style.color = '';
+        }, 1500);
+    } catch (e) {
+        utils.showAlert('Не удалось скопировать: ' + chatId, 'error');
+    }
+}
+
+function esc(s) {
+    return String(s || '').replace(/[&<>"']/g, c =>
+        ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function leaveChannelById(chatId, btn) {
+    const ch = activeChannelsCache.find(c => c.chat_id === chatId);
+    const title = (ch && ch.chat_title) || chatId;
+    return leaveChannel(chatId, title, btn);
+}
+
+async function leaveChannel(chatId, title, btn) {
+    // title приходит из закэшированных данных (не из HTML-атрибута) — безопасно
+    // использовать в confirm()/showAlert(), это не innerHTML и не инлайн-JS-атрибут.
+    if (!confirm(`Бот будет удалён из «${title}».\n\nПродолжить?`)) return;
+
+    btn.disabled = true;
+    btn.textContent = '⏳ Выход...';
+
+    try {
+        const res = await api.request('/api/bot-channels/leave', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id: chatId }),
+        });
+        utils.showAlert(`Бот вышел из «${title}»`);
+        const card = document.getElementById('ch-' + chatId);
+        if (card) card.remove();
+        const cnt = document.getElementById('activeCount');
+        if (cnt) cnt.textContent = Math.max(0, parseInt(cnt.textContent) - 1);
+    } catch (err) {
+        utils.showAlert('Ошибка: ' + err.message, 'error');
+        btn.disabled = false;
+        btn.textContent = '🚪 Выйти';
+    }
+}
+
+async function showChannelDetails(chatId) {
+    document.getElementById('channelDetailsTitle').textContent = 'Информация о канале';
+    const body = document.getElementById('channelDetailsBody');
+    body.innerHTML = '<p style="color:var(--text-muted);">Загрузка...</p>';
+    modal.show('channelDetailsModal');
+
+    try {
+        const data = await api.request(`/api/bot-channels/${chatId}/details`);
+        document.getElementById('channelDetailsTitle').textContent = data.title || 'Канал';
+
+        const typeLabel = { channel: 'Канал', supergroup: 'Супергруппа', group: 'Группа', private: 'Личный чат' }[data.type] || data.type;
+
+        const rows = [
+            ['ID чата', `<span class="chat-id-copy" onclick="copyId('${data.chat_id}', this)">${data.chat_id}</span>`],
+            ['Username', data.username ? `@${esc(data.username)}` : '—'],
+            ['Тип', typeLabel],
+            ['Участников', data.member_count != null ? data.member_count : '—'],
+            ['Описание', data.description ? esc(data.description) : '—'],
+            ['Ссылка-приглашение', data.invite_link ? `<a href="${esc(data.invite_link)}" target="_blank" style="color:var(--primary);">${esc(data.invite_link)}</a>` : '—'],
+        ];
+
+        let html = rows.map(([label, value]) => `
+            <div class="detail-row">
+                <span class="label">${label}</span>
+                <span class="value">${value}</span>
+            </div>
+        `).join('');
+
+        if (data.admins && data.admins.length > 0) {
+            html += `
+                <div style="margin-top:15px;">
+                    <div class="label" style="color:var(--text-secondary);font-size:13px;margin-bottom:8px;">Администраторы (${data.admins.length})</div>
+                    <div>${data.admins.map(a => `
+                        <span class="admin-chip">${a.is_bot ? '🤖' : '👤'} ${esc(a.first_name || '')}${a.username ? ' (@' + esc(a.username) + ')' : ''}</span>
+                    `).join('')}</div>
+                </div>
+            `;
+        }
+
+        body.innerHTML = html;
+    } catch (err) {
+        body.innerHTML = `<div class="alert alert-error">Не удалось загрузить данные: ${esc(err.message || '')}</div>`;
+    }
+}
+
+loadAll();
+</script>
+{% endblock %}

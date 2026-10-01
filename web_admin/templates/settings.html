@@ -1,0 +1,847 @@
+{% extends "base.html" %}
+
+{% block page_title %}Настройки бота{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ── Таблица подписок ─────────────────────────────────────── */
+.sub-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 16px;
+    font-size: 14px;
+}
+.sub-table th {
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    text-align: left;
+    padding: 10px 14px;
+    font-weight: 600;
+    letter-spacing: .03em;
+    border-bottom: 1px solid var(--border-color);
+}
+.sub-table td {
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-primary);
+    vertical-align: middle;
+}
+.sub-table tr:last-child td { border-bottom: none; }
+.sub-table tr:hover td { background: rgba(255,255,255,.03); }
+
+.badge-forever {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    background: rgba(99,102,241,.18);
+    color: #818cf8;
+    font-size: 12px;
+    font-weight: 600;
+}
+.badge-expires {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    background: rgba(245,158,11,.15);
+    color: #fbbf24;
+    font-size: 12px;
+    font-weight: 600;
+}
+.badge-expired {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    background: rgba(239,68,68,.15);
+    color: #f87171;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.ref-link {
+    color: var(--accent);
+    text-decoration: none;
+    font-family: monospace;
+    font-size: 13px;
+    word-break: break-all;
+}
+.ref-link:hover { text-decoration: underline; }
+
+/* ── Модальное окно ──────────────────────────────────────── */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.65);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+}
+.modal-overlay.active { display: flex; }
+
+.modal-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 30px 32px;
+    width: 100%;
+    max-width: 480px;
+    box-shadow: 0 24px 64px rgba(0,0,0,.5);
+}
+.modal-card h3 {
+    color: var(--text-primary);
+    margin: 0 0 22px;
+    font-size: 20px;
+}
+
+.form-group { margin-bottom: 18px; }
+.form-group label {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin-bottom: 6px;
+    font-weight: 500;
+}
+.form-control {
+    width: 100%;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    padding: 9px 12px;
+    font-size: 14px;
+    box-sizing: border-box;
+    outline: none;
+    transition: border-color .15s;
+}
+.form-control:focus { border-color: var(--accent); }
+
+.duration-row {
+    display: flex;
+    gap: 10px;
+}
+.duration-row .form-control { flex: 1; }
+.duration-row select.form-control { flex: 2; }
+
+.modal-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 24px;
+}
+.btn { padding: 9px 20px; border-radius: 8px; font-size: 14px;
+       font-weight: 600; cursor: pointer; border: none; transition: opacity .15s; }
+.btn:hover { opacity: .85; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-danger  { background: #ef4444; color: #fff; }
+.btn-ghost   { background: var(--bg-tertiary); color: var(--text-primary);
+               border: 1px solid var(--border-color); }
+
+.empty-hint {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 32px 0;
+    font-size: 14px;
+}
+
+/* ── Таймер обратного отсчёта ──────────────────────────────── */
+.countdown {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: monospace;
+    font-size: 12px;
+    font-weight: 600;
+    margin-left: 6px;
+}
+.countdown-green  { color: #4ade80; }
+.countdown-yellow { color: #fbbf24; }
+.countdown-red    { color: #f87171; }
+
+/* ── Кнопки действий ──────────────────────────────────────── */
+.btn-edit {
+    padding: 5px 12px;
+    font-size: 12px;
+    background: rgba(99,102,241,.15);
+    color: #818cf8;
+    border: 1px solid rgba(99,102,241,.3);
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: background .15s;
+}
+.btn-edit:hover { background: rgba(99,102,241,.25); }
+.actions-cell {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<h2 style="color:var(--text-primary);margin-bottom:25px;font-size:28px;">⚙️ Настройки бота</h2>
+
+<!-- ── Обязательные подписки ─────────────────────────────── -->
+<div style="background:var(--bg-tertiary);padding:25px;border-radius:16px;border:1px solid var(--border-color);">
+
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:6px;">
+        <h3 style="color:var(--text-primary);font-size:20px;margin:0;">📢 Обязательные подписки для старта</h3>
+        <button class="btn btn-primary" onclick="openModal()">＋ Добавить канал</button>
+    </div>
+    <p style="color:var(--text-secondary);font-size:13px;margin:0 0 16px;">
+        Пользователь должен подписаться на эти каналы/боты перед использованием бота.
+        Поддерживаются: <code>@username</code>, <code>https://t.me/username</code>,
+        приватные ссылки <code>https://t.me/+…</code>, ссылки на ботов.
+    </p>
+
+    <div id="channelsContainer">
+        {% if required_sub_channels %}
+        <table class="sub-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Название</th>
+                    <th>Канал / Ссылка</th>
+                    <th>Срок действия</th>
+                    <th style="width:140px;"></th>
+                </tr>
+            </thead>
+            <tbody id="channelsTbody">
+                {% for ch in required_sub_channels %}
+                <tr id="row-{{ ch.id }}">
+                    <td style="color:var(--text-secondary);font-size:13px;">{{ loop.index }}</td>
+                    <td><strong>{{ ch.title }}</strong></td>
+                    <td>
+                        <a class="ref-link" href="{{ ch.channel_ref if ch.channel_ref.startswith('http') else 'https://t.me/' + ch.channel_ref.lstrip('@') }}" target="_blank">
+                            {{ ch.channel_ref }}
+                        </a>
+                    </td>
+                    <td>
+                        {% if not ch.expires_at %}
+                            <span class="badge-forever">∞ Навсегда</span>
+                        {% elif ch.expires_at > now %}
+                            <span class="badge-expires" data-expires="{{ ch.expires_at }}" title="{{ ch.expires_at }}">до {{ ch.expires_at[:10] }}</span>
+                            <span class="countdown" data-countdown="{{ ch.expires_at }}"></span>
+                        {% else %}
+                            <span class="badge-expired">❌ Истёк</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="actions-cell">
+                            <button class="btn-edit" onclick='openEditModal({{ ch|tojson }})'>Редактировать</button>
+                            <button class="btn btn-danger" style="padding:5px 12px;font-size:12px;"
+                                    onclick="deleteChannel({{ ch.id }})">Удалить</button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-hint" id="emptyHint">
+            Нет ни одного канала. Нажмите «Добавить канал» чтобы создать первый.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- ── Информация ─────────────────────────────────────────── -->
+<div style="background:var(--bg-tertiary);padding:25px;border-radius:16px;border:1px solid var(--border-color);margin-top:20px;">
+    <h3 style="color:var(--text-primary);margin-bottom:14px;font-size:18px;">ℹ️ Как это работает</h3>
+    <ul style="color:var(--text-secondary);line-height:2.1;padding-left:20px;font-size:14px;">
+        <li>Проверка выполняется при команде <code>/start</code> и подтверждении телефона</li>
+        <li>Для публичных каналов (@username, t.me/username) бот должен быть <b>администратором</b> канала</li>
+        <li>Приватные ссылки (<code>t.me/+…</code>) и ссылки на ботов не проверяются — пользователю показывается ссылка, по которой нужно перейти</li>
+        <li>Истёкшие записи больше не применяются к новым пользователям, но остаются в таблице</li>
+    </ul>
+</div>
+
+<!-- ── Модальное окно ────────────────────────────────────── -->
+<div class="modal-overlay" id="addModal">
+    <div class="modal-card">
+        <h3>➕ Добавить обязательную подписку</h3>
+
+        <div class="form-group">
+            <label>Название / заметка</label>
+            <input type="text" id="mTitle" class="form-control"
+                   placeholder="Например: Основной канал проекта" maxlength="100">
+        </div>
+
+        <div class="form-group">
+            <label>Канал или группа</label>
+            <div style="display:flex;gap:8px;">
+                <input type="text" id="mRef" class="form-control"
+                       placeholder="@channel или -1001234567890"
+                       autocomplete="off">
+                <button type="button" id="mCheckBtn"
+                        onclick="checkSubChannel()"
+                        style="padding:9px 14px;background:var(--bg-tertiary);
+                               color:var(--text-primary);border:1px solid var(--border-color);
+                               border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;
+                               white-space:nowrap;flex-shrink:0;">
+                    🔍 Проверить
+                </button>
+            </div>
+            <div id="mStatus" style="margin-top:8px;padding:8px 12px;border-radius:8px;
+                                      font-size:13px;font-weight:500;display:none;"></div>
+            <div style="color:var(--text-secondary);font-size:12px;margin-top:5px;">
+                Публичный: <code>@username</code> | Приватный: числовой ID <code>-1001234567890</code><br>
+                💡 Добавьте бота в канал — он пришлёт ID автоматически, или отправьте <code>/id</code> в канале.
+            </div>
+        </div>
+
+        <!-- Invite-ссылка (только для приватных) -->
+        <div class="form-group" id="mInviteGroup" style="display:none;">
+            <label>Ссылка-приглашение для пользователей
+                <span style="color:var(--text-secondary);font-weight:400;font-size:12px;">(обязательно для приватных)</span>
+            </label>
+            <input type="text" id="mInviteLink" class="form-control"
+                   placeholder="https://t.me/+XXXXX">
+        </div>
+
+        <div class="form-group">
+            <label>Срок действия</label>
+            <div class="duration-row">
+                <input type="number" id="mDurValue" class="form-control"
+                       value="0" min="0" max="9999"
+                       placeholder="0 = навсегда">
+                <select id="mDurUnit" class="form-control">
+                    <option value="forever">∞ Навсегда (0)</option>
+                    <option value="seconds">Секунд</option>
+                    <option value="minutes">Минут</option>
+                    <option value="hours">Часов</option>
+                    <option value="days">Дней</option>
+                    <option value="weeks">Недель</option>
+                    <option value="months">Месяцев</option>
+                    <option value="years">Лет</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="modal-actions">
+            <button class="btn btn-primary" id="mSubmitBtn" onclick="submitAdd()" disabled>💾 Добавить</button>
+            <button class="btn btn-ghost" onclick="closeModal()">Отмена</button>
+        </div>
+        <p id="mHint" style="color:var(--text-secondary);font-size:12px;text-align:center;margin-top:8px;">
+            Сначала проверьте канал кнопкой «🔍 Проверить»
+        </p>
+    </div>
+</div>
+
+<!-- ── Модальное окно редактирования ────────────────────────── -->
+<div class="modal-overlay" id="editModal">
+    <div class="modal-card">
+        <h3>✏️ Редактировать подписку</h3>
+
+        <div class="form-group">
+            <label>Название / заметка</label>
+            <input type="text" id="eTitle" class="form-control"
+                   placeholder="Например: Основной канал проекта" maxlength="100">
+        </div>
+
+        <div class="form-group">
+            <label>Канал или группа</label>
+            <div style="display:flex;gap:8px;">
+                <input type="text" id="eRef" class="form-control"
+                       placeholder="@channel или -1001234567890"
+                       autocomplete="off">
+                <button type="button" id="eCheckBtn"
+                        onclick="checkEditChannel()"
+                        style="padding:9px 14px;background:var(--bg-tertiary);
+                               color:var(--text-primary);border:1px solid var(--border-color);
+                               border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;
+                               white-space:nowrap;flex-shrink:0;">
+                    🔍 Проверить
+                </button>
+            </div>
+            <div id="eStatus" style="margin-top:8px;padding:8px 12px;border-radius:8px;
+                                      font-size:13px;font-weight:500;display:none;"></div>
+        </div>
+
+        <div class="form-group" id="eInviteGroup" style="display:none;">
+            <label>Ссылка-приглашение для пользователей
+                <span style="color:var(--text-secondary);font-weight:400;font-size:12px;">(обязательно для приватных)</span>
+            </label>
+            <input type="text" id="eInviteLink" class="form-control"
+                   placeholder="https://t.me/+XXXXX">
+        </div>
+
+        <div class="form-group">
+            <label>Срок действия</label>
+            <div class="duration-row">
+                <input type="number" id="eDurValue" class="form-control"
+                       value="0" min="0" max="9999"
+                       placeholder="0 = навсегда">
+                <select id="eDurUnit" class="form-control">
+                    <option value="forever">∞ Навсегда (0)</option>
+                    <option value="seconds">Секунд</option>
+                    <option value="minutes">Минут</option>
+                    <option value="hours">Часов</option>
+                    <option value="days">Дней</option>
+                    <option value="weeks">Недель</option>
+                    <option value="months">Месяцев</option>
+                    <option value="years">Лет</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="modal-actions">
+            <button class="btn btn-primary" id="eSubmitBtn" onclick="submitEdit()">💾 Сохранить</button>
+            <button class="btn btn-ghost" onclick="closeEditModal()">Отмена</button>
+        </div>
+        <p id="eHint" style="color:var(--text-secondary);font-size:12px;text-align:center;margin-top:8px;">
+            Если канал не меняется — проверка не обязательна
+        </p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ── Состояние проверки ──────────────────────────────────────
+let subChannelVerified = false;
+let subChannelIsPrivate = false;
+let subChatTitle = '';
+
+let editVerified = false;
+let editIsPrivate = false;
+let editChatTitle = '';
+let editingChannelId = null;
+let editingOriginalRef = null;
+
+// ── Таймеры обратного отсчёта ──────────────────────────────
+const countdownIntervals = {};
+
+function startCountdown(span, expiresAt) {
+    const target = new Date(expiresAt).getTime();
+    function tick() {
+        const now = Date.now();
+        let diff = target - now;
+        if (diff <= 0) {
+            span.textContent = '❌ Истёк';
+            span.className = 'countdown countdown-red';
+            clearInterval(countdownIntervals[expiresAt]);
+            // Обновляем badge тоже
+            const badge = span.previousElementSibling;
+            if (badge && badge.classList.contains('badge-expires')) {
+                badge.className = 'badge-expired';
+                badge.textContent = '❌ Истёк';
+            }
+            return;
+        }
+        const d = Math.floor(diff / 86400000); diff %= 86400000;
+        const h = Math.floor(diff / 3600000);  diff %= 3600000;
+        const m = Math.floor(diff / 60000);    diff %= 60000;
+        const s = Math.floor(diff / 1000);
+
+        let parts = [];
+        if (d > 0) parts.push(d + 'д');
+        if (h > 0 || d > 0) parts.push(String(h).padStart(2,'0') + 'ч');
+        parts.push(String(m).padStart(2,'0') + 'м');
+        parts.push(String(s).padStart(2,'0') + 'с');
+
+        span.textContent = parts.join(' ');
+
+        // Цветовая индикация
+        if (d > 1) span.className = 'countdown countdown-green';
+        else if (h > 1) span.className = 'countdown countdown-yellow';
+        else span.className = 'countdown countdown-red';
+    }
+    tick();
+    countdownIntervals[expiresAt] = setInterval(tick, 1000);
+}
+
+// Запускаем таймеры для всех существующих элементов
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('[data-countdown]').forEach(el => {
+        startCountdown(el, el.dataset.countdown);
+    });
+});
+
+// ── Модальное окно добавления ──────────────────────────────
+function openModal() {
+    document.getElementById('mTitle').value = '';
+    document.getElementById('mRef').value = '';
+    document.getElementById('mDurValue').value = '0';
+    document.getElementById('mDurUnit').value = 'forever';
+    document.getElementById('mInviteLink').value = '';
+    document.getElementById('mInviteGroup').style.display = 'none';
+    const st = document.getElementById('mStatus');
+    st.style.display = 'none'; st.textContent = '';
+    document.getElementById('mSubmitBtn').disabled = true;
+    document.getElementById('mHint').style.display = 'block';
+    subChannelVerified = false; subChannelIsPrivate = false; subChatTitle = '';
+    document.getElementById('addModal').classList.add('active');
+}
+function closeModal() {
+    document.getElementById('addModal').classList.remove('active');
+}
+document.getElementById('addModal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeModal();
+});
+
+document.getElementById('mRef').addEventListener('input', () => {
+    subChannelVerified = false; subChannelIsPrivate = false; subChatTitle = '';
+    document.getElementById('mSubmitBtn').disabled = true;
+    document.getElementById('mHint').style.display = 'block';
+    const st = document.getElementById('mStatus');
+    st.style.display = 'none'; st.textContent = '';
+    document.getElementById('mInviteGroup').style.display = 'none';
+});
+
+async function checkSubChannel() {
+    const ref = document.getElementById('mRef').value.trim();
+    if (!ref) { utils.showAlert('Введите канал или ID', 'error'); return; }
+
+    const st = document.getElementById('mStatus');
+    const btn = document.getElementById('mCheckBtn');
+    st.style.cssText = 'display:block;padding:8px 12px;border-radius:8px;font-size:13px;font-weight:500;' +
+                       'background:rgba(99,102,241,.1);color:#a5b4fc;border:1px solid rgba(99,102,241,.2);margin-top:8px;';
+    st.textContent = '⏳ Проверяю...';
+    btn.disabled = true;
+    subChannelVerified = false;
+    document.getElementById('mSubmitBtn').disabled = true;
+
+    try {
+        const data = await api.request(`/api/tasks/check-channel?channel=${encodeURIComponent(ref)}`);
+        if (data.ok) {
+            const role = (data.status === 'administrator' || data.status === 'creator') ? '👑 Администратор' : '✅ Участник';
+            st.style.cssText = 'display:block;padding:8px 12px;border-radius:8px;font-size:13px;font-weight:500;' +
+                               'background:rgba(34,197,94,.12);color:#4ade80;border:1px solid rgba(34,197,94,.25);margin-top:8px;';
+            st.textContent = `✅ Бот @${data.bot_username} в канале «${data.chat_title}» (${role}).`;
+            subChannelVerified = true; subChannelIsPrivate = !!data.is_private; subChatTitle = data.chat_title || '';
+            document.getElementById('mSubmitBtn').disabled = false;
+            document.getElementById('mHint').style.display = 'none';
+            document.getElementById('mInviteGroup').style.display = subChannelIsPrivate ? 'block' : 'none';
+            if (!subChannelIsPrivate) document.getElementById('mInviteLink').value = '';
+        } else {
+            st.style.cssText = 'display:block;padding:8px 12px;border-radius:8px;font-size:13px;font-weight:500;' +
+                               'background:rgba(239,68,68,.1);color:#f87171;border:1px solid rgba(239,68,68,.2);margin-top:8px;';
+            st.innerHTML = '❌ ' + (data.error || 'Ошибка').replace(/\n/g, '<br>');
+            document.getElementById('mInviteGroup').style.display = 'none';
+        }
+    } catch(err) {
+        st.style.cssText = 'display:block;padding:8px 12px;border-radius:8px;font-size:13px;font-weight:500;' +
+                           'background:rgba(239,68,68,.1);color:#f87171;border:1px solid rgba(239,68,68,.2);margin-top:8px;';
+        st.textContent = '❌ ' + (err.message || 'Ошибка');
+    } finally {
+        btn.disabled = false;
+    }
+}
+document.getElementById('mRef').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); checkSubChannel(); }
+});
+
+// Синхронизация числа и единицы (добавление)
+document.getElementById('mDurValue').addEventListener('input', function() {
+    if (parseInt(this.value) === 0) document.getElementById('mDurUnit').value = 'forever';
+    else if (document.getElementById('mDurUnit').value === 'forever') document.getElementById('mDurUnit').value = 'days';
+});
+document.getElementById('mDurUnit').addEventListener('change', function() {
+    if (this.value === 'forever') document.getElementById('mDurValue').value = '0';
+    else if (parseInt(document.getElementById('mDurValue').value) === 0) document.getElementById('mDurValue').value = '1';
+});
+
+// Синхронизация числа и единицы (редактирование)
+document.getElementById('eDurValue').addEventListener('input', function() {
+    if (parseInt(this.value) === 0) document.getElementById('eDurUnit').value = 'forever';
+    else if (document.getElementById('eDurUnit').value === 'forever') document.getElementById('eDurUnit').value = 'days';
+});
+document.getElementById('eDurUnit').addEventListener('change', function() {
+    if (this.value === 'forever') document.getElementById('eDurValue').value = '0';
+    else if (parseInt(document.getElementById('eDurValue').value) === 0) document.getElementById('eDurValue').value = '1';
+});
+
+// ── Добавить ────────────────────────────────────────────────
+async function submitAdd() {
+    if (!subChannelVerified) { utils.showAlert('Сначала проверьте канал', 'error'); return; }
+    const title = document.getElementById('mTitle').value.trim();
+    const ref   = document.getElementById('mRef').value.trim();
+    const dv    = parseInt(document.getElementById('mDurValue').value) || 0;
+    const du    = document.getElementById('mDurUnit').value;
+    const invite = document.getElementById('mInviteLink').value.trim();
+
+    if (!title || !ref) { utils.showAlert('Заполните название и канал', 'error'); return; }
+    if (subChannelIsPrivate && !invite) { utils.showAlert('Укажите ссылку-приглашение для приватного канала', 'error'); return; }
+
+    const fd = new FormData();
+    fd.append('title', title);
+    fd.append('channel_ref', ref);
+    fd.append('duration_value', dv);
+    fd.append('duration_unit', dv === 0 ? 'forever' : du);
+    if (invite) fd.append('channel_invite_link', invite);
+
+    try {
+        const res = await api.request('/api/settings/required-sub-channels', { method: 'POST', body: fd });
+        utils.showAlert('Канал добавлен!', 'success');
+        closeModal();
+        addRowToTable(res.channel);
+    } catch(err) {
+        utils.showAlert(err.message || 'Ошибка', 'error');
+    }
+}
+
+// ── Модальное окно редактирования ──────────────────────────
+function openEditModal(ch) {
+    editingChannelId = ch.id;
+    editingOriginalRef = ch.channel_ref;
+
+    document.getElementById('eTitle').value = ch.title || '';
+    document.getElementById('eRef').value = ch.channel_ref || '';
+    document.getElementById('eInviteLink').value = ch.channel_invite_link || '';
+
+    // Определяем is_private по channel_ref
+    const isPriv = /^-?\d+$/.test(String(ch.channel_ref));
+    editIsPrivate = isPriv;
+    editVerified = false;
+    editChatTitle = ch.channel_title || '';
+
+    document.getElementById('eInviteGroup').style.display = isPriv ? 'block' : 'none';
+    document.getElementById('eSubmitBtn').disabled = false;
+
+    const st = document.getElementById('eStatus');
+    st.style.display = 'none'; st.textContent = '';
+    document.getElementById('eHint').style.display = 'block';
+
+    // Восстанавливаем duration из expires_at
+    if (!ch.expires_at) {
+        document.getElementById('eDurValue').value = '0';
+        document.getElementById('eDurUnit').value = 'forever';
+    } else {
+        const exp = new Date(ch.expires_at);
+        const now = new Date();
+        let diffMs = exp.getTime() - now.getTime();
+        if (diffMs <= 0) {
+            document.getElementById('eDurValue').value = '1';
+            document.getElementById('eDurUnit').value = 'days';
+        } else {
+            const diffSec = Math.floor(diffMs / 1000);
+            if (diffSec % 604800 === 0) { document.getElementById('eDurValue').value = diffSec / 604800; document.getElementById('eDurUnit').value = 'weeks'; }
+            else if (diffSec % 86400 === 0) { document.getElementById('eDurValue').value = diffSec / 86400; document.getElementById('eDurUnit').value = 'days'; }
+            else if (diffSec % 3600 === 0) { document.getElementById('eDurValue').value = diffSec / 3600; document.getElementById('eDurUnit').value = 'hours'; }
+            else if (diffSec % 60 === 0) { document.getElementById('eDurValue').value = diffSec / 60; document.getElementById('eDurUnit').value = 'minutes'; }
+            else { document.getElementById('eDurValue').value = diffSec; document.getElementById('eDurUnit').value = 'seconds'; }
+        }
+    }
+
+    document.getElementById('editModal').classList.add('active');
+}
+function closeEditModal() {
+    document.getElementById('editModal').classList.remove('active');
+    editingChannelId = null;
+}
+document.getElementById('editModal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeEditModal();
+});
+
+document.getElementById('eRef').addEventListener('input', () => {
+    editVerified = false; editIsPrivate = false; editChatTitle = '';
+    const st = document.getElementById('eStatus');
+    st.style.display = 'none'; st.textContent = '';
+    document.getElementById('eInviteGroup').style.display = 'none';
+});
+
+async function checkEditChannel() {
+    const ref = document.getElementById('eRef').value.trim();
+    if (!ref) { utils.showAlert('Введите канал или ID', 'error'); return; }
+
+    const st = document.getElementById('eStatus');
+    const btn = document.getElementById('eCheckBtn');
+    st.style.cssText = 'display:block;padding:8px 12px;border-radius:8px;font-size:13px;font-weight:500;' +
+                       'background:rgba(99,102,241,.1);color:#a5b4fc;border:1px solid rgba(99,102,241,.2);margin-top:8px;';
+    st.textContent = '⏳ Проверяю...';
+    btn.disabled = true;
+    editVerified = false;
+
+    try {
+        const data = await api.request(`/api/tasks/check-channel?channel=${encodeURIComponent(ref)}`);
+        if (data.ok) {
+            const role = (data.status === 'administrator' || data.status === 'creator') ? '👑 Администратор' : '✅ Участник';
+            st.style.cssText = 'display:block;padding:8px 12px;border-radius:8px;font-size:13px;font-weight:500;' +
+                               'background:rgba(34,197,94,.12);color:#4ade80;border:1px solid rgba(34,197,94,.25);margin-top:8px;';
+            st.textContent = `✅ Бот @${data.bot_username} в канале «${data.chat_title}» (${role}).`;
+            editVerified = true; editIsPrivate = !!data.is_private; editChatTitle = data.chat_title || '';
+            document.getElementById('eHint').style.display = 'none';
+            document.getElementById('eInviteGroup').style.display = editIsPrivate ? 'block' : 'none';
+        } else {
+            st.style.cssText = 'display:block;padding:8px 12px;border-radius:8px;font-size:13px;font-weight:500;' +
+                               'background:rgba(239,68,68,.1);color:#f87171;border:1px solid rgba(239,68,68,.2);margin-top:8px;';
+            st.innerHTML = '❌ ' + (data.error || 'Ошибка').replace(/\n/g, '<br>');
+        }
+    } catch(err) {
+        st.style.cssText = 'display:block;padding:8px 12px;border-radius:8px;font-size:13px;font-weight:500;' +
+                           'background:rgba(239,68,68,.1);color:#f87171;border:1px solid rgba(239,68,68,.2);margin-top:8px;';
+        st.textContent = '❌ ' + (err.message || 'Ошибка');
+    } finally {
+        btn.disabled = false;
+    }
+}
+document.getElementById('eRef').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); checkEditChannel(); }
+});
+
+async function submitEdit() {
+    if (!editingChannelId) return;
+    const title = document.getElementById('eTitle').value.trim();
+    const ref   = document.getElementById('eRef').value.trim();
+    const dv    = parseInt(document.getElementById('eDurValue').value) || 0;
+    const du    = document.getElementById('eDurUnit').value;
+    const invite = document.getElementById('eInviteLink').value.trim();
+
+    if (!title || !ref) { utils.showAlert('Заполните название и канал', 'error'); return; }
+    if (editIsPrivate && !invite) { utils.showAlert('Укажите ссылку-приглашение для приватного канала', 'error'); return; }
+
+    const fd = new FormData();
+    fd.append('title', title);
+    fd.append('channel_ref', ref);
+    fd.append('duration_value', dv);
+    fd.append('duration_unit', dv === 0 ? 'forever' : du);
+    if (invite) fd.append('channel_invite_link', invite);
+
+    try {
+        const res = await api.request(`/api/settings/required-sub-channels/${editingChannelId}/update`, { method: 'POST', body: fd });
+        utils.showAlert('Канал обновлён!', 'success');
+        closeEditModal();
+        updateRowInTable(res.channel);
+    } catch(err) {
+        utils.showAlert(err.message || 'Ошибка', 'error');
+    }
+}
+
+// ── Добавить строку в таблицу без перезагрузки ───────────────
+function addRowToTable(ch) {
+    const hint = document.getElementById('emptyHint');
+    if (hint) hint.remove();
+
+    let tbody = document.getElementById('channelsTbody');
+    if (!tbody) {
+        const container = document.getElementById('channelsContainer');
+        container.innerHTML = `
+            <table class="sub-table">
+                <thead><tr>
+                    <th>#</th><th>Название</th><th>Канал / Ссылка</th>
+                    <th>Срок действия</th><th style="width:140px;"></th>
+                </tr></thead>
+                <tbody id="channelsTbody"></tbody>
+            </table>`;
+        tbody = document.getElementById('channelsTbody');
+    }
+
+    const idx = tbody.querySelectorAll('tr').length + 1;
+    const expiredAt = ch.expires_at;
+    let badge;
+    if (!expiredAt) {
+        badge = `<span class="badge-forever">∞ Навсегда</span>`;
+    } else {
+        badge = `<span class="badge-expires" data-expires="${expiredAt}" title="${expiredAt}">до ${expiredAt.slice(0,10)}</span>
+                 <span class="countdown" data-countdown="${expiredAt}"></span>`;
+    }
+    const displayName = ch.channel_title || ch.channel_ref;
+    const invite = ch.channel_invite_link;
+    const isPrivate = /^-?\d+$/.test(String(ch.channel_ref));
+    let href;
+    if (invite) href = invite;
+    else if (!isPrivate) href = ch.channel_ref.startsWith('http') ? ch.channel_ref : `https://t.me/${ch.channel_ref.replace(/^@/, '')}`;
+    else href = null;
+
+    const tr = document.createElement('tr');
+    tr.id = `row-${ch.id}`;
+    tr.innerHTML = `
+        <td style="color:var(--text-secondary);font-size:13px;">${idx}</td>
+        <td><strong>${escHtml(ch.title)}</strong></td>
+        <td>${href ? `<a class="ref-link" href="${escHtml(href)}" target="_blank">${escHtml(displayName)}</a>` : `<span style="color:var(--text-secondary);">🔒 ${escHtml(displayName)}</span>`}</td>
+        <td>${badge}</td>
+        <td>
+            <div class="actions-cell">
+                <button class="btn-edit" onclick='openEditModal(${JSON.stringify(ch).replace(/'/g, "&#39;")})'>Редактировать</button>
+                <button class="btn btn-danger" style="padding:5px 12px;font-size:12px;"
+                        onclick="deleteChannel(${ch.id})">Удалить</button>
+            </div>
+        </td>`;
+    tbody.appendChild(tr);
+
+    // Запускаем таймер для новой строки
+    if (expiredAt) {
+        const countdownEl = tr.querySelector('[data-countdown]');
+        if (countdownEl) startCountdown(countdownEl, expiredAt);
+    }
+}
+
+// ── Обновить строку в таблице ───────────────────────────────
+function updateRowInTable(ch) {
+    const oldRow = document.getElementById(`row-${ch.id}`);
+    if (!oldRow) return addRowToTable(ch);
+
+    // Останавливаем старый таймер
+    const oldCountdown = oldRow.querySelector('[data-countdown]');
+    if (oldCountdown && countdownIntervals[oldCountdown.dataset.countdown]) {
+        clearInterval(countdownIntervals[oldCountdown.dataset.countdown]);
+    }
+
+    const expiredAt = ch.expires_at;
+    let badge;
+    if (!expiredAt) {
+        badge = `<span class="badge-forever">∞ Навсегда</span>`;
+    } else {
+        badge = `<span class="badge-expires" data-expires="${expiredAt}" title="${expiredAt}">до ${expiredAt.slice(0,10)}</span>
+                 <span class="countdown" data-countdown="${expiredAt}"></span>`;
+    }
+    const displayName = ch.channel_title || ch.channel_ref;
+    const invite = ch.channel_invite_link;
+    const isPrivate = /^-?\d+$/.test(String(ch.channel_ref));
+    let href;
+    if (invite) href = invite;
+    else if (!isPrivate) href = ch.channel_ref.startsWith('http') ? ch.channel_ref : `https://t.me/${ch.channel_ref.replace(/^@/, '')}`;
+    else href = null;
+
+    oldRow.innerHTML = `
+        <td style="color:var(--text-secondary);font-size:13px;">${oldRow.cells[0].textContent}</td>
+        <td><strong>${escHtml(ch.title)}</strong></td>
+        <td>${href ? `<a class="ref-link" href="${escHtml(href)}" target="_blank">${escHtml(displayName)}</a>` : `<span style="color:var(--text-secondary);">🔒 ${escHtml(displayName)}</span>`}</td>
+        <td>${badge}</td>
+        <td>
+            <div class="actions-cell">
+                <button class="btn-edit" onclick='openEditModal(${JSON.stringify(ch).replace(/'/g, "&#39;")})'>Редактировать</button>
+                <button class="btn btn-danger" style="padding:5px 12px;font-size:12px;"
+                        onclick="deleteChannel(${ch.id})">Удалить</button>
+            </div>
+        </td>`;
+
+    if (expiredAt) {
+        const countdownEl = oldRow.querySelector('[data-countdown]');
+        if (countdownEl) startCountdown(countdownEl, expiredAt);
+    }
+}
+
+// ── Удалить ─────────────────────────────────────────────────
+async function deleteChannel(id) {
+    if (!confirm('Удалить этот канал из обязательных подписок?')) return;
+    try {
+        await api.request(`/api/settings/required-sub-channels/${id}/delete`, { method: 'POST' });
+        // Останавливаем таймер
+        const row = document.getElementById(`row-${id}`);
+        if (row) {
+            const cd = row.querySelector('[data-countdown]');
+            if (cd && countdownIntervals[cd.dataset.countdown]) {
+                clearInterval(countdownIntervals[cd.dataset.countdown]);
+            }
+            row.remove();
+        }
+        utils.showAlert('Канал удалён', 'success');
+        const tbody = document.getElementById('channelsTbody');
+        if (tbody && tbody.querySelectorAll('tr').length === 0) {
+            document.getElementById('channelsContainer').innerHTML =
+                `<div class="empty-hint" id="emptyHint">
+                    Нет ни одного канала. Нажмите «Добавить канал» чтобы создать первый.
+                 </div>`;
+        }
+    } catch(err) {
+        utils.showAlert(err.message || 'Ошибка', 'error');
+    }
+}
+
+function escHtml(s) {
+    return String(s).replace(/[&<>"']/g, c =>
+        ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+</script>
+{% endblock %}

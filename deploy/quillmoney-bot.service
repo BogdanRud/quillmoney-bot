@@ -1,0 +1,45 @@
+# systemd-юнит для самого бота (polling).
+# Скопировать в /etc/systemd/system/quillmoney-bot.service, затем:
+#   systemctl daemon-reload
+#   systemctl enable --now quillmoney-bot
+#
+# ВАЖНО: подставьте реальные пути и пользователя (НЕ root).
+# Создайте отдельного непривилегированного пользователя:
+#   useradd -r -s /usr/sbin/nologin -d /opt/quillmoney quillmoney
+#   chown -R quillmoney:quillmoney /opt/quillmoney
+#   chmod 600 /opt/quillmoney/.env
+
+[Unit]
+Description=QuillMoney Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=quillmoney
+Group=quillmoney
+WorkingDirectory=/opt/quillmoney
+ExecStart=/opt/quillmoney/venv/bin/python main.py
+Restart=on-failure
+RestartSec=5
+
+# --- Sandboxing: ограничиваем процесс на уровне ОС, даже если в коде
+# найдётся уязвимость, ущерб от неё будет минимален ---
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/quillmoney
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

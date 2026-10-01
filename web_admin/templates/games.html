@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+
+{% block page_title %}Игры{% endblock %}
+
+{% block extra_css %}
+<style>
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+    margin-bottom: 20px;
+}
+.stat-card {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 16px 18px;
+}
+.stat-card .stat-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-bottom: 6px;
+}
+.stat-card .stat-value {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.event-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+.event-table th {
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    text-align: left;
+    padding: 10px 14px;
+    font-weight: 600;
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+}
+.event-table td {
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-primary);
+    vertical-align: middle;
+    white-space: nowrap;
+}
+.event-table tr:last-child td { border-bottom: none; }
+.event-table tr:hover td { background: rgba(255,255,255,.03); }
+
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-secondary);
+    font-size: 15px;
+}
+.empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+    <h2 style="color:var(--text-primary);font-size:28px;margin:0;">🎰 Игры на деньги</h2>
+    <button class="btn" onclick="loadGames()"
+            style="background:var(--bg-tertiary);color:var(--text-primary);border:1px solid var(--border-color);
+                   padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;">
+        🔄 Обновить
+    </button>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-label">Всего спинов</div>
+        <div class="stat-value" id="statSpins">—</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Игроков</div>
+        <div class="stat-value" id="statPlayers">—</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Поставлено всего</div>
+        <div class="stat-value" id="statBet">—</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Выплачено всего</div>
+        <div class="stat-value" id="statPayout">—</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Прибыль бота</div>
+        <div class="stat-value" id="statProfit" style="color:var(--success);">—</div>
+    </div>
+</div>
+
+<input
+    type="text"
+    id="searchInput"
+    placeholder="Поиск по имени, username или ID..."
+    class="form-control"
+    style="max-width: 400px; margin-bottom: 16px;"
+    oninput="renderGames()"
+>
+
+<div style="background:var(--bg-tertiary);border-radius:16px;border:1px solid var(--border-color);overflow-x:auto;">
+    <div id="gamesContainer">
+        <div class="empty-state">
+            <div class="icon">⏳</div>
+            Загрузка...
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let allSpins = [];
+
+    function esc(s) {
+        return String(s || '').replace(/[&<>"']/g, c =>
+            ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    async function loadGames() {
+        try {
+            const data = await api.request('/api/games/history');
+            allSpins = data.spins || [];
+
+            const s = data.stats || {};
+            document.getElementById('statSpins').textContent = s.total_spins ?? 0;
+            document.getElementById('statPlayers').textContent = s.unique_players ?? 0;
+            document.getElementById('statBet').textContent = utils.formatCurrency(s.total_bet || 0);
+            document.getElementById('statPayout').textContent = utils.formatCurrency(s.total_payout || 0);
+            const profitEl = document.getElementById('statProfit');
+            profitEl.textContent = utils.formatCurrency(s.house_profit || 0);
+            profitEl.style.color = (s.house_profit || 0) >= 0 ? 'var(--success)' : 'var(--error)';
+
+            renderGames();
+        } catch (err) {
+            document.getElementById('gamesContainer').innerHTML =
+                `<div class="empty-state"><div class="icon">❌</div>Ошибка загрузки: ${esc(err.message)}</div>`;
+        }
+    }
+
+    function renderGames() {
+        const query = (document.getElementById('searchInput').value || '').toLowerCase();
+        const filtered = allSpins.filter(sp =>
+            String(sp.user_id).includes(query) ||
+            (sp.first_name && sp.first_name.toLowerCase().includes(query)) ||
+            (sp.username && sp.username.toLowerCase().includes(query))
+        );
+
+        const container = document.getElementById('gamesContainer');
+        if (filtered.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="icon">🎰</div>
+                    ${allSpins.length === 0 ? 'Пока никто ещё не играл.' : 'Ничего не найдено.'}
+                </div>`;
+            return;
+        }
+
+        const rows = filtered.map(sp => {
+            const dt = sp.created_at ? sp.created_at.slice(0, 16).replace('T', ' ') : '—';
+            const name = sp.first_name || (sp.username ? '@' + sp.username : sp.user_id);
+            const username = sp.username ? '@' + esc(sp.username) : '—';
+            const profitColor = sp.profit > 0 ? 'var(--success)' : (sp.profit < 0 ? 'var(--error)' : 'var(--text-muted)');
+            const profitSign = sp.profit > 0 ? '+' : '';
+            return `
+                <tr>
+                    <td>${dt}</td>
+                    <td>
+                        <div style="font-weight:600;">${esc(name)}</div>
+                        <div style="font-size:12px;color:var(--text-secondary);">${username} · ID ${sp.user_id}</div>
+                    </td>
+                    <td>${esc(sp.game_type)}</td>
+                    <td>${utils.formatCurrency(sp.bet_amount)}</td>
+                    <td>x${sp.multiplier}</td>
+                    <td>${utils.formatCurrency(sp.payout)}</td>
+                    <td style="color:${profitColor};font-weight:600;">${profitSign}${utils.formatCurrency(sp.profit)}</td>
+                    <td>${utils.formatCurrency(sp.current_balance)}</td>
+                </tr>`;
+        }).join('');
+
+        container.innerHTML = `
+            <table class="event-table">
+                <thead>
+                    <tr>
+                        <th>Дата</th>
+                        <th>Игрок</th>
+                        <th>Игра</th>
+                        <th>Ставка</th>
+                        <th>Множитель</th>
+                        <th>Выплата</th>
+                        <th>Профит</th>
+                        <th>Баланс сейчас</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>`;
+    }
+
+    loadGames();
+</script>
+{% endblock %}

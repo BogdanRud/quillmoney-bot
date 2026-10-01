@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+
+{% block page_title %}Заявки на рекламу{% endblock %}
+
+{% block content %}
+<h2 style="color: var(--text-primary); margin-bottom: 25px; font-size: 28px;">📢 Заявки на рекламу</h2>
+
+<div style="margin-bottom: 20px; display: flex; gap: 10px;">
+    <button class="btn filter-btn btn-primary" data-tab="active" onclick="switchTab('active')" style="padding: 8px 20px;">Активные</button>
+    <button class="btn filter-btn" data-tab="history" onclick="switchTab('history')" style="padding: 8px 20px;">История</button>
+</div>
+
+<div id="adRequestsList">
+    <p style="text-align: center; color: var(--text-muted); padding: 40px;">Загрузка...</p>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentTab = 'active';
+
+    function switchTab(tab) {
+        currentTab = tab;
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.classList.toggle('btn-primary', btn.dataset.tab === tab);
+        });
+        if (tab === 'active') {
+            loadAdRequests();
+        } else {
+            loadAdRequestsHistory();
+        }
+    }
+
+    function renderAdRequestCard(req, showActions) {
+        const date = req.created_at ? utils.formatDate(req.created_at) : 'Нет';
+        const statusLabel = {'pending': '🟡 Ожидает', 'taken': '🔵 В работе', 'accepted': '✅ Принята', 'rejected': '❌ Отклонена'}[req.status] || req.status;
+        const statusColor = {'pending': 'var(--warning)', 'taken': 'var(--primary)', 'accepted': 'var(--success)', 'rejected': 'var(--error)'}[req.status] || 'var(--text-muted)';
+        const paymentLabel = {'balance': '💰 С баланса', 'stars': '⭐ Звёздами', 'manual': '💬 Через админа'}[req.payment_method] || req.payment_method;
+        return `
+            <div style="background: var(--bg-tertiary); padding: 25px; border-radius: 12px; margin-bottom: 15px; border: 1px solid var(--border-color); border-left: 4px solid ${statusColor};">
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px;">
+                    <div style="flex: 1;">
+                        <h3 style="color: var(--text-primary); margin-bottom: 15px; font-size: 20px;">
+                            Заявка #${req.request_id}
+                            <span style="font-size: 14px; color: ${statusColor}; margin-left: 10px;">${statusLabel}</span>
+                            <span style="font-size: 14px; color: var(--text-secondary); margin-left: 10px;">${paymentLabel}</span>
+                        </h3>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                            <div>
+                                <div style="color: var(--text-secondary); font-size: 12px; margin-bottom: 5px;">Пользователь</div>
+                                <div style="color: var(--text-primary); font-weight: 600;">${utils.escapeHtml(req.user_name)} (${utils.escapeHtml(req.username)})</div>
+                            </div>
+                            <div>
+                                <div style="color: var(--text-secondary); font-size: 12px; margin-bottom: 5px;">ID</div>
+                                <div style="color: var(--text-primary);">${req.user_id}</div>
+                            </div>
+                            <div>
+                                <div style="color: var(--text-secondary); font-size: 12px; margin-bottom: 5px;">Канал</div>
+                                <div style="color: var(--text-primary);"><code>${utils.escapeHtml(req.channel_link)}</code></div>
+                            </div>
+                            <div>
+                                <div style="color: var(--text-secondary); font-size: 12px; margin-bottom: 5px;">Бюджет</div>
+                                <div style="color: var(--text-primary); font-weight: 700; font-size: 24px;">${utils.formatCurrency(req.budget)}</div>
+                            </div>
+                            <div>
+                                <div style="color: var(--text-secondary); font-size: 12px; margin-bottom: 5px;">Цель (чел.)</div>
+                                <div style="color: var(--text-primary); font-weight: 600; font-size: 20px;">${req.target_subscribers}</div>
+                            </div>
+                            <div>
+                                <div style="color: var(--text-secondary); font-size: 12px; margin-bottom: 5px;">Награда за подписку</div>
+                                <div style="color: var(--success); font-weight: 600;">${utils.formatCurrency(req.reward_per_user)}</div>
+                            </div>
+                            <div>
+                                <div style="color: var(--text-secondary); font-size: 12px; margin-bottom: 5px;">Комиссия 15%</div>
+                                <div style="color: var(--text-muted);">${utils.formatCurrency(req.budget * 0.15)}</div>
+                            </div>
+                            <div>
+                                <div style="color: var(--text-secondary); font-size: 12px; margin-bottom: 5px;">Дата</div>
+                                <div style="color: var(--text-primary);">${date}</div>
+                            </div>
+                        </div>
+                        ${req.task_id ? `<div style="margin-top: 10px; color: var(--success);">✅ Создано задание #${req.task_id}</div>` : ''}
+                    </div>
+                    <div style="text-align: right; margin-left: 20px; min-width: 160px;">
+                        <a href="/admin/chat/${req.user_id}" class="btn btn-primary" style="display: block; margin-bottom: 10px; padding: 10px 20px; font-size: 14px; text-align: center;">
+                            💬 Переписка
+                            <span class="notif-badge notif-badge-inline" data-chat-badge="${req.user_id}" style="display:none;"></span>
+                        </a>
+                        ${showActions ? `
+                            <button onclick="acceptRequest(${req.request_id})" class="btn btn-success" style="padding: 10px 20px; font-size: 14px; font-weight: 600; margin-bottom: 8px; width: 100%;">
+                                ✅ Принять
+                            </button>
+                            <button onclick="rejectRequest(${req.request_id})" class="btn" style="padding: 10px 20px; font-size: 14px; font-weight: 600; background: var(--error); color: white; width: 100%;">
+                                ❌ Отклонить
+                            </button>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    async function loadAdRequests() {
+        try {
+            const data = await api.request('/api/ad-requests');
+            const container = document.getElementById('adRequestsList');
+
+            if (data.requests && data.requests.length > 0) {
+                container.innerHTML = data.requests.map(req => renderAdRequestCard(req, true)).join('');
+            } else {
+                container.innerHTML = '<p style="text-align: center; color: var(--text-muted); padding: 40px;">Нет заявок на рекламу</p>';
+            }
+            notifications.applyChatBadges();
+        } catch (error) {
+            console.error('Ошибка загрузки:', error);
+            document.getElementById('adRequestsList').innerHTML =
+                '<div class="alert alert-error">Ошибка загрузки</div>';
+        }
+    }
+
+    async function loadAdRequestsHistory() {
+        try {
+            const data = await api.request('/api/ad-requests/history');
+            const container = document.getElementById('adRequestsList');
+
+            if (data.requests && data.requests.length > 0) {
+                container.innerHTML = data.requests.map(req => renderAdRequestCard(req, false)).join('');
+            } else {
+                container.innerHTML = '<p style="text-align: center; color: var(--text-muted); padding: 40px;">История пуста</p>';
+            }
+            notifications.applyChatBadges();
+        } catch (error) {
+            console.error('Ошибка загрузки истории:', error);
+            document.getElementById('adRequestsList').innerHTML =
+                '<div class="alert alert-error">Ошибка загрузки</div>';
+        }
+    }
+
+    async function acceptRequest(requestId) {
+        if (!confirm('Принять заявку? Будет создано задание для пользователей.')) return;
+        try {
+            await api.request(`/api/ad-requests/${requestId}/accept`, { method: 'POST' });
+            utils.showAlert('Заявка принята, задание создано!', 'success');
+            loadAdRequests();
+        } catch (error) {
+            utils.showAlert(error.message || 'Ошибка', 'error');
+        }
+    }
+
+    async function rejectRequest(requestId) {
+        if (!confirm('Отклонить заявку?')) return;
+        try {
+            await api.request(`/api/ad-requests/${requestId}/reject`, { method: 'POST' });
+            utils.showAlert('Заявка отклонена', 'success');
+            loadAdRequests();
+        } catch (error) {
+            utils.showAlert(error.message || 'Ошибка', 'error');
+        }
+    }
+
+    loadAdRequests();
+</script>
+{% endblock %}

@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+
+{% block page_title %}История заданий{% endblock %}
+
+{% block content %}
+<h2 style="color: var(--text-primary); margin-bottom: 25px; font-size: 28px;">🗂 История заданий</h2>
+<p style="color: var(--text-muted); margin-bottom: 20px; font-size: 14px;">
+    Завершённые (заполненные полностью) и остановленные вручную задания. Нажмите на задание, чтобы увидеть, кто его выполнил.
+</p>
+
+<div id="historyList">
+    <p style="text-align: center; color: var(--text-muted); padding: 40px;">Загрузка...</p>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function escHtml(s) {
+        return String(s ?? '').replace(/[&<>"']/g, c =>
+            ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function channelLabel(task) {
+        const title = task.channel_title || task.channel_username;
+        const isPrivate = /^-?\d+$/.test(String(task.channel_username)) || String(task.channel_username).startsWith('+');
+        if (isPrivate) return `🔒 ${escHtml(title)}`;
+        return `<a href="https://t.me/${escHtml(task.channel_username)}" target="_blank" style="color:inherit;text-decoration:none;">${escHtml(title)}</a>`;
+    }
+
+    function ownerLabel(task) {
+        const owner = task.owner;
+        if (!owner) return '<span style="color:var(--text-muted);">создано вручную</span>';
+        const label = owner.name
+            ? escHtml(owner.name) + (owner.username ? ` (@${escHtml(owner.username)})` : ` (ID ${owner.user_id})`)
+            : (owner.username ? '@' + escHtml(owner.username) : `ID ${owner.user_id}`);
+        return `<a href="/admin/chat/${owner.user_id}" onclick="event.stopPropagation();" style="color:var(--text-primary);text-decoration:underline;" title="Открыть чат с владельцем">${label}</a>`;
+    }
+
+    const expanded = {};
+
+    async function loadHistory() {
+        try {
+            const data = await api.request('/api/tasks/history');
+            const container = document.getElementById('historyList');
+
+            if (!data.tasks || data.tasks.length === 0) {
+                container.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:40px;">История пуста — здесь появятся завершённые и остановленные задания</p>';
+                return;
+            }
+
+            container.innerHTML = data.tasks.map(task => {
+                const statusLabel = task.completed_fully ? '✅ Заполнено полностью' : '🚫 Остановлено досрочно';
+                const statusColor = task.completed_fully ? 'var(--success)' : 'var(--text-muted)';
+                const endedDate = task.ended_at ? utils.formatDate(task.ended_at) : '—';
+                const perUser = task.reward_amount / Math.max(task.required_subscribers, 1);
+
+                return `
+                    <div style="background:var(--bg-tertiary);padding:20px 25px;border-radius:12px;margin-bottom:12px;
+                                border:1px solid var(--border-color);border-left:4px solid ${statusColor};cursor:pointer;"
+                         onclick="toggleTask(${task.task_id})">
+                        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+                            <div>
+                                <h3 style="color:var(--text-primary);font-size:18px;margin-bottom:6px;">
+                                    📢 ${channelLabel(task)}
+                                    <span style="font-size:13px;color:${statusColor};margin-left:10px;">${statusLabel}</span>
+                                </h3>
+                                <div style="color:var(--text-secondary);font-size:13px;">
+                                    Заполнено: <b style="color:var(--text-primary);">${task.current_subscribers}/${task.required_subscribers}</b>
+                                    &nbsp;|&nbsp; Бюджет: <b style="color:var(--accent-primary);">${utils.formatCurrency(task.reward_amount)}</b>
+                                    &nbsp;|&nbsp; За подписку: <b style="color:var(--success);">${utils.formatCurrency(perUser)}</b>
+                                    &nbsp;|&nbsp; Завершено: ${endedDate}
+                                    &nbsp;|&nbsp; Владелец: ${ownerLabel(task)}
+                                </div>
+                            </div>
+                            <span style="color:var(--text-muted);font-size:20px;">${expanded[task.task_id] ? '▲' : '▼'}</span>
+                        </div>
+                        <div id="completions-${task.task_id}" style="margin-top:15px;${expanded[task.task_id] ? '' : 'display:none;'}">
+                            <p style="color:var(--text-muted);">Загрузка...</p>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // Дозагружаем уже раскрытые задания (например, после обновления списка)
+            for (const taskId of Object.keys(expanded)) {
+                if (expanded[taskId]) await loadCompletions(taskId);
+            }
+        } catch (error) {
+            console.error('Ошибка загрузки истории:', error);
+            document.getElementById('historyList').innerHTML =
+                '<div class="alert alert-error">Ошибка загрузки</div>';
+        }
+    }
+
+    async function toggleTask(taskId) {
+        const box = document.getElementById(`completions-${taskId}`);
+        const isOpen = box.style.display !== 'none';
+        if (isOpen) {
+            box.style.display = 'none';
+            expanded[taskId] = false;
+        } else {
+            box.style.display = 'block';
+            expanded[taskId] = true;
+            await loadCompletions(taskId);
+        }
+    }
+
+    async function loadCompletions(taskId) {
+        const box = document.getElementById(`completions-${taskId}`);
+        try {
+            const data = await api.request(`/api/tasks/${taskId}/completions`);
+            const rows = data.completions || [];
+
+            if (rows.length === 0) {
+                box.innerHTML = '<p style="color:var(--text-muted);padding:10px 0;">Никто не выполнил это задание.</p>';
+                return;
+            }
+
+            const statusLabel = (c) => {
+                if (c.verification_failed) return '<span style="color:var(--error);">❌ Не прошёл проверку</span>';
+                if (c.is_verified) return '<span style="color:var(--success);">✅ Верифицировано</span>';
+                return '<span style="color:var(--warning);">⏳ Ожидает верификации</span>';
+            };
+
+            box.innerHTML = `
+                <div style="overflow-x:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                    <thead>
+                        <tr style="text-align:left;color:var(--text-secondary);border-bottom:1px solid var(--border-color);">
+                            <th style="padding:8px;">Пользователь</th>
+                            <th style="padding:8px;">ID</th>
+                            <th style="padding:8px;">Выполнено</th>
+                            <th style="padding:8px;">Верифицировано</th>
+                            <th style="padding:8px;">Статус</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows.map(c => `
+                            <tr style="border-bottom:1px solid var(--border-color);">
+                                <td style="padding:8px;color:var(--text-primary);">
+                                    ${escHtml(c.first_name || '—')} ${c.username ? `(@${escHtml(c.username)})` : ''}
+                                </td>
+                                <td style="padding:8px;color:var(--text-muted);">${c.user_id}</td>
+                                <td style="padding:8px;color:var(--text-muted);">${c.completed_at ? utils.formatDate(c.completed_at) : '—'}</td>
+                                <td style="padding:8px;color:var(--text-muted);">${c.verified_at ? utils.formatDate(c.verified_at) : '—'}</td>
+                                <td style="padding:8px;">${statusLabel(c)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+                </div>
+            `;
+        } catch (error) {
+            box.innerHTML = '<div class="alert alert-error">Ошибка загрузки списка выполнивших</div>';
+        }
+    }
+
+    loadHistory();
+</script>
+{% endblock %}

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Quill Studio Admin{% endblock %}</title>
+    <link rel="stylesheet" href="/static/style.css">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h2>🎯 Quill Studio</h2>
+            <p>Панель администратора</p>
+        </div>
+        <ul class="sidebar-menu">
+            {% if admin.role != 'Manager' %}
+            <li><a href="/admin" class="{% if request.url.path == '/admin' %}active{% endif %}">📊 Главная</a></li>
+            <li><a href="/admin/stats" class="{% if '/stats' in request.url.path %}active{% endif %}">📈 Статистика</a></li>
+            <li><a href="/admin/tasks" class="{% if request.url.path == '/admin/tasks' %}active{% endif %}">📋 Задания</a></li>
+            <li><a href="/admin/tasks/history" class="{% if '/tasks/history' in request.url.path %}active{% endif %}">🗂 История заданий</a></li>
+            <li><a href="/admin/users" class="{% if '/users' in request.url.path %}active{% endif %}">👥 Пользователи</a></li>
+            <li><a href="/admin/withdrawals" class="{% if '/withdrawals' in request.url.path %}active{% endif %}">💸 Выводы <span id="nav-badge-withdrawals" class="notif-badge" style="display:none;"></span></a></li>
+            <li><a href="/admin/ad-requests" class="{% if '/ad-requests' in request.url.path %}active{% endif %}">📢 Реклама <span id="nav-badge-ad-requests" class="notif-badge" style="display:none;"></span></a></li>
+            <li><a href="/admin/tickets" class="{% if '/tickets' in request.url.path %}active{% endif %}">🆘 Тикеты <span id="nav-badge-tickets" class="notif-badge" style="display:none;"></span></a></li>
+            <li><a href="/admin/appeals" class="{% if '/appeals' in request.url.path %}active{% endif %}">🚫 Апелляции <span id="nav-badge-appeals" class="notif-badge" style="display:none;"></span></a></li>
+            <li><a href="/admin/games" class="{% if '/games' in request.url.path %}active{% endif %}">🎰 Игры</a></li>
+            <li><a href="/admin/broadcast" class="{% if '/broadcast' in request.url.path %}active{% endif %}">📨 Рассылка</a></li>
+            <li><a href="/admin/bot-channels" class="{% if '/bot-channels' in request.url.path %}active{% endif %}">📡 Каналы бота</a></li>
+            <li><a href="/admin/settings" class="{% if '/settings' in request.url.path %}active{% endif %}">⚙️ Настройки</a></li>
+            {% endif %}
+            <li><a href="/admin/crm" class="{% if '/crm' in request.url.path %}active{% endif %}">🗂 CRM</a></li>
+        </ul>
+    </div>
+    
+    <div class="main-content">
+        <div class="header">
+            <h1>{% block page_title %}Панель администратора{% endblock %}</h1>
+            <div class="user-info">
+                <span>Админ: {{ admin.first_name or admin.username or admin.user_id }}</span>
+                <button class="logout-btn" onclick="logout()">Выйти</button>
+            </div>
+        </div>
+        
+        <div class="content-card">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+    
+    <script src="/static/script.js"></script>
+    <script>
+        async function logout() {
+            try {
+                await fetch('/api/logout', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                });
+            } catch (e) {
+                // даже если запрос не прошёл, всё равно уходим со страницы
+            }
+            window.location.href = '/';
+        }
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
